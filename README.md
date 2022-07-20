@@ -10,7 +10,22 @@ ln -s $SCRATCH/tweets data
 ```
 
 ## Download Data
-Contact [Jacob](jacob.mila-complex-data-lab-github.handle@tianshome.com) for a list of file IDs. Save these in `.env` in the project root folder (same folder as the `makefile`.) Run the following from the project root folder to retrieve data:
+Contact [Jacob](mailto:jacob.mila-complex-data-lab-github.handle@tianshome.com) for a list of file IDs. Save these in `.env` under the project root folder (same folder as the `makefile`.) Run the following from the project root folder to retrieve data:
 ```bash
 make setup
+```
+
+## Preprocess Data
+Note that by default, HuggingFace Datasets uses `~/.cache` as the cache folder. For performance reasons, consider setting the env var `HF_DATASETS_CACHE` to a location on the scratch drive.
+
+Run:
+```bash
+make preprocess
+```
+
+# Contributing
+## Unittests
+After finishing steps in the "setup" section, run the following to unit test the code: 
+```bash
+make test
 ```

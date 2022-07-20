@@ -29,7 +29,7 @@ def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
         }
     )
     dataset = load_dataset("csv", data_files=data_args.csv_path, features=features)
-    return dataset["train"]
+    return dataset["train"]  # type: ignore
 
 
 def filter_hf_dataset_by_uid(
