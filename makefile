@@ -1,6 +1,8 @@
 include .env
 
 setup_data_folder : clean
+	mkdir -pv data/raw
+	mkdir -pv data/external
 	mkdir -pv data/interim
 	mkdir -pv data/processed
 
