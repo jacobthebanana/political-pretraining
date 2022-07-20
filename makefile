@@ -15,6 +15,13 @@ clean :
 	rm -rf data/interim
 	rm -rf data/processed
 
+clean_all : clean
+	rm -rf data/raw
+	rm -rf data/external
+
+
+setup : clean setup_data_folder download_data download_text
+
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
 preprocess : 
 	python3 -m src.data.make_dataset \
