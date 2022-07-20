@@ -2,7 +2,7 @@ from typing import Any, Container, Dict
 
 import pandas as pd
 import datasets
-from datasets import Dataset
+from datasets import Dataset, load_dataset, Value, Features
 from transformers import AutoTokenizer, HfArgumentParser
 
 from ..config import ModelConfig, DataConfig
@@ -20,9 +20,16 @@ def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
     output:
      raw dataset.
     """
-    df = pd.read_csv(data_args.csv_path, dtype={"uid": str, "tid": str})
-    dataset = Dataset.from_pandas(df)
-    return dataset
+    features = Features(
+        {
+            "uid": Value(dtype="string"),
+            "tid": Value(dtype="string"),
+            "text": Value(dtype="string"),
+            "created_at": Value(dtype="string"),
+        }
+    )
+    dataset = load_dataset("csv", data_files=data_args.csv_path, features=features)
+    return dataset["train"]
 
 
 def filter_hf_dataset_by_uid(
