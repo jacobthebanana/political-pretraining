@@ -19,6 +19,10 @@ test_uid_set = set(["611113833", "1284651818782535680", "0"])
 model_args = ModelConfig()
 data_args = DataConfig(csv_path=test_tweet_csv_path)
 
+# Regression test: handle examples where text is None.
+with open(test_tweet_csv_path, "a") as test_tweet_csv_file:
+    test_tweet_csv_file.write("7,11,2022-07-21T09:35:15.000Z,")
+
 
 class CreateDatasetFromRawText(unittest.TestCase):
     def setUp(self):

@@ -56,8 +56,16 @@ def preprocess_and_tokenize_dataset(
     tokenizer = AutoTokenizer.from_pretrained(model_args.base_model_name)
 
     def preprocess_function(examples):
+        texts = list(examples["text"])
+
+        # Handle instances where text might be None.
+        for text_index in range(len(texts)):
+            text = texts[text_index]
+            if not isinstance(text, str):
+                texts[text_index] = " "
+
         return tokenizer(
-            examples["text"],
+            texts,
             padding="max_length",
             max_length=model_args.max_seq_length,
             truncation=True,
