@@ -69,7 +69,7 @@ class GetDataLoaderFromProcessedDataset(unittest.TestCase):
         # num_examples_yielded might exceed len(self.preprocessed_dataset) as some
         # examples were repeated to pad the leftover batch.
         self.assertGreaterEqual(num_examples_yielded, len(self.preprocessed_dataset))
-        self.assertLess(
+        self.assertLessEqual(
             num_examples_yielded, len(self.preprocessed_dataset) + effective_batch_size
         )
 
