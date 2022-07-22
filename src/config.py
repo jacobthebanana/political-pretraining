@@ -25,6 +25,8 @@ class DataConfig:
     csv_path: str = field(default="data/raw/tweets.csv")
     processed_dataset_path: str = field(default="data/raw/tweets.csv")
     num_procs: int = field(default=32)
+    # Keep only the last 1/shard_denominator of data.
+    shard_denominator: int = field(default=1)
 
 
 @dataclass

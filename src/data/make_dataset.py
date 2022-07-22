@@ -28,8 +28,14 @@ def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
             "created_at": Value(dtype="string"),
         }
     )
-    dataset = load_dataset("csv", data_files=data_args.csv_path, features=features)
-    return dataset["train"]  # type: ignore
+    dataset_dict = load_dataset("csv", data_files=data_args.csv_path, features=features)
+    dataset: Dataset = dataset_dict["train"]  # type: ignore
+
+    num_shards = data_args.shard_denominator
+    shard_index = num_shards - 1
+    sharded_dataset = dataset.shard(num_shards=num_shards, index=shard_index)
+
+    return sharded_dataset
 
 
 def filter_hf_dataset_by_uid(

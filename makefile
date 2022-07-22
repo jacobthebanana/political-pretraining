@@ -28,7 +28,8 @@ setup: clean setup_data_folder download_data download_text
 preprocess: 
 	python3 -m src.data.make_dataset \
 		--csv_path="data/raw/tweets.csv" \
-		--processed_dataset_path="data/processed/tweets"
+		--processed_dataset_path="data/processed/tweets" \
+		--shard_denominator=${shard_denominator}
 
 # Set up truncated dataset for testing.
 setup_data_tests:

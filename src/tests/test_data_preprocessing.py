@@ -40,6 +40,18 @@ class CreateDatasetFromRawText(unittest.TestCase):
         )
 
 
+class CreateDatasetShardFromRawText(unittest.TestCase):
+    def setUp(self):
+        data_args_with_sharding = DataConfig(
+            csv_path=test_tweet_csv_path, shard_denominator=2
+        )
+        self.sharded_dataset = create_raw_hf_dataset(data_args_with_sharding)
+        self.full_dataset = create_raw_hf_dataset(data_args)
+
+    def test_sharded_dataset_length(self):
+        self.assertEqual(len(self.sharded_dataset), len(self.full_dataset) // 2)
+
+
 class FilterDatasetByUID(unittest.TestCase):
     def setUp(self):
         self.dataset: Dataset = create_raw_hf_dataset(data_args)
