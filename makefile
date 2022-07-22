@@ -56,7 +56,7 @@ test_show_dataset_stats: preprocess_test_dataset
 data_test_cleanup:
 	rm -rf data/testing
 
-data_tests: setup_data_tests run_data_tests test_show_dataset_stats  
+data_tests: setup_data_tests run_data_tests  
 
 model_predict_tests: setup_data_tests preprocess_test_dataset run_model_predict_tests
 

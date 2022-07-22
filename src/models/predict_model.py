@@ -1,7 +1,7 @@
 """
 Logic for generating per-user average embeddings of a given dataset.
 """
-from typing import Iterator, Dict, Literal
+from typing import , Dict
 import numpy as np
 import jax
 from flax.training.common_utils import shard

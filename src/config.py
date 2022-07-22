@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Literal
+
 import inspect
 
-BatchKeys = Literal["input_ids", "attention_mask"]
+BatchKeys = str
+
 
 @dataclass
 class ModelConfig:
@@ -32,4 +33,3 @@ class PipelineConfig:
     eval_per_device_batch_size: int = field(default=128)
     # Batch size for calculating gradients
     train_per_device_batch_size: int = field(default=16)
-
