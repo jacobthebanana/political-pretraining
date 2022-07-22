@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 
-import inspect
 
-BatchKeys = str
+BatchTokenKeys = str  # "input_ids", "attention_mask"
+BatchInfoKeys = str  # "uid"
 
 
 @dataclass
@@ -10,20 +10,12 @@ class ModelConfig:
     base_model_name: str = field(default="roberta-base")
     max_seq_length: int = field(default=128)
 
-    @classmethod
-    def from_dict(cls, args):
-        cleaned_args = {}
-        for k, v in args.items():
-            if k in inspect.signature(cls).parameters:
-                cleaned_args[k] = v
-
-        return cls(**cleaned_args)
-
 
 @dataclass
 class DataConfig:
     csv_path: str = field(default="data/raw/tweets.csv")
     processed_dataset_path: str = field(default="data/raw/tweets.csv")
+    output_embeddings_json_path: str = field(default="data/artifacts/embeddings.json")
     num_procs: int = field(default=32)
     # Keep only the last 1/shard_denominator of data.
     shard_denominator: int = field(default=1)

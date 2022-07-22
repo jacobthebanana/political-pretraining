@@ -1,10 +1,11 @@
 include .env
 
-setup_data_folder: clean
+setup_data_folder: 
 	mkdir -pv data/raw
 	mkdir -pv data/external
 	mkdir -pv data/interim
 	mkdir -pv data/processed
+	mkdir -pv data/artifacts
 
 download_data:
 	wget -O "data/raw/user_labels.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${USER_LABEL_DRIVE_FILE_ID}"
@@ -16,6 +17,7 @@ download_text:
 clean: 
 	rm -rf data/interim
 	rm -rf data/processed
+	rm -rf data/artifacts
 
 clean_all: clean
 	rm -rf data/raw
@@ -29,7 +31,16 @@ preprocess:
 	python3 -m src.data.make_dataset \
 		--csv_path="data/raw/tweets.csv" \
 		--processed_dataset_path="data/processed/tweets" \
+		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator}
+
+# Generate average user embeddings on the given dataset.
+embed:
+	python3 -m src.models.predict_model \
+		--processed_dataset_path="data/processed/tweets" \
+		--output_embeddings_json_path="data/artifacts/embeddings.json"
+		--base_model_name=${base_model_name} \
+		--eval_per_device_batch_size=${eval_per_device_batch_size}
 
 # Set up truncated dataset for testing.
 setup_data_tests:
