@@ -1,7 +1,7 @@
 # Setup
 ## Create Data Folder
 After inflating, this project would require around 100 GB of free space for its datasets. 
-Consider creating a symbolic link from your scratch folder to the data/ folder under the project root folder.
+Consider creating a symbolic link from your scratch folder to the `data/` folder under the project root folder.
 
 For example:
 ```bash

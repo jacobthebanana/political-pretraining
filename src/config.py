@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal
 import inspect
 
+BatchKeys = Literal["input_ids", "attention_mask"]
 
 @dataclass
 class ModelConfig:
@@ -23,3 +24,12 @@ class DataConfig:
     csv_path: str = field(default="data/raw/tweets.csv")
     processed_dataset_path: str = field(default="data/raw/tweets.csv")
     num_procs: int = field(default=32)
+
+
+@dataclass
+class PipelineConfig:
+    # Batch size for forward passes, including ranking triplets.
+    eval_per_device_batch_size: int = field(default=128)
+    # Batch size for calculating gradients
+    train_per_device_batch_size: int = field(default=16)
+

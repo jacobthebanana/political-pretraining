@@ -36,23 +36,30 @@ setup_data_tests:
 	mkdir -pv data/testing/interim
 	mkdir -pv data/testing/processed
 
-	head -n 7 data/raw/tweets.csv > data/testing/raw/tweets.csv
+	head -n 302 data/raw/tweets.csv > data/testing/raw/tweets.csv
 
 run_data_tests:
-	python3 -m unittest src.tests
+	python3 -m unittest src.tests.test_data_preprocessing
 
-test_preprocess_dataset:
+run_model_predict_tests:
+	python3 -m unittest src.tests.test_predict_model
+
+preprocess_test_dataset:
 	python3 -m src.data.make_dataset \
 		--csv_path="data/testing/raw/tweets.csv" \
 		--processed_dataset_path="data/testing/processed/tweets"
 
-test_show_dataset_stats: test_preprocess_dataset
+test_show_dataset_stats: preprocess_test_dataset
 	python3 -m src.data.print_dataset_stats \
 		--processed_dataset_path="data/testing/processed/tweets"
 
 data_test_cleanup:
 	rm -rf data/testing
 
-data_tests: setup_data_tests run_data_tests run_data_tests test_show_dataset_stats data_test_cleanup 
+data_tests: setup_data_tests run_data_tests test_show_dataset_stats  
 
-test: data_tests
+model_predict_tests: setup_data_tests preprocess_test_dataset run_model_predict_tests
+
+test_cleanup: data_test_cleanup
+
+test: data_tests model_predict_tests test_cleanup
