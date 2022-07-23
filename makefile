@@ -10,13 +10,16 @@ setup_data_folder:
 download_data:
 	wget -O "data/raw/user_labels.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${USER_LABEL_DRIVE_FILE_ID}"
 
-download_text:
+download_text_csv:
 	wget -O "data/raw/tweets.tar.gz" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TWEET_TEXT_DRIVE_FILE_ID}"
 	tar -xzvf tweets.tar.gz --directory data/raw/
 
+download_text_json:
 	wget -O "data/raw/tweets.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TWEET_JSON_DRIVE_FILE_ID}"
 	sed -i 's/#//g' "data/raw/tweets.json"
 	
+download_text: download_text_csv download_text_json
+
 clean: 
 	rm -rf data/interim
 	rm -rf data/processed
