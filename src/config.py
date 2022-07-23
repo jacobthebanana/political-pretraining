@@ -13,7 +13,8 @@ class ModelConfig:
 
 @dataclass
 class DataConfig:
-    csv_path: str = field(default="data/raw/tweets.csv")
+    source_format: str = field(default="csv")
+    source_path: str = field(default="data/raw/tweets.csv")
     processed_dataset_path: str = field(default="data/raw/tweets.csv")
     output_embeddings_json_path: str = field(default="data/artifacts/embeddings.json")
     num_procs: int = field(default=32)

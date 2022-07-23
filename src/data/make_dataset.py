@@ -14,21 +14,27 @@ def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
     """
     Create HuggingFace dataset from tweet CSV.
 
-    params:
-     csv_path: path to tweet csv file.
-
     output:
      raw dataset.
     """
-    features = Features(
-        {
-            "uid": Value(dtype="string"),
-            "tid": Value(dtype="string"),
-            "text": Value(dtype="string"),
-            "created_at": Value(dtype="string"),
-        }
-    )
-    dataset_dict = load_dataset("csv", data_files=data_args.csv_path, features=features)
+    if data_args.source_format == "csv":
+        csv_features = Features(
+            {
+                "uid": Value(dtype="string"),
+                "tid": Value(dtype="string"),
+                "text": Value(dtype="string"),
+                "created_at": Value(dtype="string"),
+            }
+        )
+        dataset_dict = load_dataset(
+            "csv", data_files=data_args.source_path, features=csv_features
+        )
+    else:  # json
+        dataset_dict = load_dataset("json", data_files=data_args.source_path)
+        dataset_dict = dataset_dict.rename_columns(
+            {"user_id": "uid", "tweet_id": "tid"}
+        )
+
     dataset: Dataset = dataset_dict["train"]  # type: ignore
 
     num_shards = data_args.shard_denominator

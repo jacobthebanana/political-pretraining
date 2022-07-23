@@ -14,6 +14,9 @@ download_text:
 	wget -O "data/raw/tweets.tar.gz" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TWEET_TEXT_DRIVE_FILE_ID}"
 	tar -xzvf tweets.tar.gz --directory data/raw/
 
+	wget -O "data/raw/tweets.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TWEET_JSON_DRIVE_FILE_ID}"
+	sed -i 's/#//g' "data/raw/tweets.json"
+	
 clean: 
 	rm -rf data/interim
 	rm -rf data/processed
@@ -49,9 +52,11 @@ setup_data_tests:
 	mkdir -pv data/testing/processed
 
 	head -n 302 data/raw/tweets.csv > data/testing/raw/tweets.csv
+	head -n 302 data/raw/tweets.json > data/testing/raw/tweets.json
 
 run_data_tests:
-	python3 -m unittest src.tests.test_data_preprocessing
+	python3 -m unittest src.tests.test_preprocessing_csv
+	python3 -m unittest src.tests.test_preprocessing_json
 
 run_model_predict_tests:
 	python3 -m unittest src.tests.test_predict_model

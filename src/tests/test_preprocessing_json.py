@@ -1,4 +1,6 @@
 import unittest
+from typing import Dict, Union
+import json
 
 import datasets
 
@@ -12,15 +14,22 @@ from ..config import ModelConfig, DataConfig
 Dataset = datasets.arrow_dataset.Dataset
 
 
-test_tweet_csv_path = "data/testing/raw/tweets.csv"
-test_uid_set = set(["611113833", "1284651818782535680", "0"])
+test_tweet_json_path = "data/testing/raw/tweets.json"
+test_uid_set = set(["1180684225097289729", "20011085", "0"])
 
 model_args = ModelConfig()
-data_args = DataConfig(csv_path=test_tweet_csv_path)
+data_args = DataConfig(source_format="json", source_path=test_tweet_json_path)
 
 # Regression test: handle examples where text is None.
-with open(test_tweet_csv_path, "a") as test_tweet_csv_file:
-    test_tweet_csv_file.write("7,11,2022-07-21T09:35:15.000Z,")
+with open(test_tweet_json_path, "a") as test_tweet_csv_file:
+    example_null_entry: Dict[str, Union[str, int, None]] = {
+        "tweet_id": "7",
+        "user_id": "11",
+        "text": None,
+        "created_at": 1658552020000,
+    }
+    example_null_entry_string = json.dumps(example_null_entry)
+    test_tweet_csv_file.write(example_null_entry_string + "\n")
 
 
 class CreateDatasetFromRawText(unittest.TestCase):
@@ -39,11 +48,17 @@ class CreateDatasetFromRawText(unittest.TestCase):
             example_entry["uid"], str, "Must be string to avoid truncation."
         )
 
+    def test_dataset_length(self):
+        with open(test_tweet_json_path, "r") as test_tweet_json_file:
+            num_test_entries = len(test_tweet_json_file.readlines())
+
+        self.assertEqual(len(self.dataset), num_test_entries)
+
 
 class CreateDatasetShardFromRawText(unittest.TestCase):
     def setUp(self):
         data_args_with_sharding = DataConfig(
-            csv_path=test_tweet_csv_path, shard_denominator=2
+            source_format="json", source_path=test_tweet_json_path, shard_denominator=2
         )
         self.sharded_dataset = create_raw_hf_dataset(data_args_with_sharding)
         self.full_dataset = create_raw_hf_dataset(data_args)
@@ -60,8 +75,8 @@ class FilterDatasetByUID(unittest.TestCase):
         )
 
     def test_filtered_dataset_length(self):
-        self.assertEqual(len(self.filtered_dataset), 2)
-        self.assertIn("611113833", self.filtered_dataset["uid"])
+        self.assertEqual(len(self.filtered_dataset), 181)
+        self.assertIn("1180684225097289729", self.filtered_dataset["uid"])
         self.assertNotIn("0", self.filtered_dataset["uid"])
 
 
