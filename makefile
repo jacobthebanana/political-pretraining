@@ -53,7 +53,7 @@ preprocess_json:
 embed:
 	python3 -m src.models.predict_model \
 		--processed_dataset_path="data/processed/tweets" \
-		--output_embeddings_json_path="data/artifacts/embeddings.json"
+		--output_embeddings_json_path="data/artifacts/embeddings.json" \
 		--base_model_name=${base_model_name} \
 		--eval_per_device_batch_size=${eval_per_device_batch_size}
 
