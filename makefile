@@ -36,7 +36,7 @@ setup: clean setup_data_folder download_data download_text
 preprocess_csv: 
 	python3 -m src.data.make_dataset \
 		--source_format=csv \
-		--csv_path="data/raw/tweets.csv" \
+		--source_path="data/raw/tweets.csv" \
 		--processed_dataset_path="data/processed/tweets" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator}
@@ -44,7 +44,7 @@ preprocess_csv:
 preprocess_json: 
 	python3 -m src.data.make_dataset \
 		--source_format=json \
-		--csv_path="data/raw/tweets.json" \
+		--source_path="data/raw/tweets.json" \
 		--processed_dataset_path="data/processed/tweets" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator}
@@ -75,7 +75,7 @@ run_model_predict_tests:
 
 preprocess_test_dataset:
 	python3 -m src.data.make_dataset \
-		--csv_path="data/testing/raw/tweets.csv" \
+		--source_path="data/testing/raw/tweets.csv" \
 		--processed_dataset_path="data/testing/processed/tweets"
 
 test_show_dataset_stats: preprocess_test_dataset
