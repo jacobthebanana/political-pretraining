@@ -33,9 +33,18 @@ clean_all: clean
 setup: clean setup_data_folder download_data download_text
 
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
-preprocess: 
+preprocess_csv: 
 	python3 -m src.data.make_dataset \
+		--source_format=csv \
 		--csv_path="data/raw/tweets.csv" \
+		--processed_dataset_path="data/processed/tweets" \
+		--max_seq_length=${max_seq_length} \
+		--shard_denominator=${shard_denominator}
+
+preprocess_json: 
+	python3 -m src.data.make_dataset \
+		--source_format=json \
+		--csv_path="data/raw/tweets.json" \
 		--processed_dataset_path="data/processed/tweets" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator}
