@@ -155,7 +155,7 @@ def _get_uid_tally_dict(
         uids = batch.info["uid"]
 
         for embedding, uid in tqdm(
-            zip(embeddings, uids), leave=False, ncols=NUM_COLUMNS
+            zip(embeddings, uids), total=len(uids), leave=False, ncols=NUM_COLUMNS
         ):
             tweet_user = uid_lookup_dict.get(uid)  # type: ignore
             if not tweet_user:
@@ -205,7 +205,9 @@ def main():
     if len(processed_dataset) % batch_size >= 1:
         num_batches += 1  # Leftover batch.
 
-    model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(model_args.base_model_name)
+    model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
+        model_args.base_model_name, from_pt=True
+    )
 
     uid_lookup_dict = _get_uid_tally_dict(model, dataloader, num_batches)
     uid_lookup_output = _compute_mean_embeddings(uid_lookup_dict)

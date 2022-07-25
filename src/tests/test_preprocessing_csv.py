@@ -20,7 +20,7 @@ data_args = DataConfig(source_path=test_tweet_csv_path)
 
 # Regression test: handle examples where text is None.
 with open(test_tweet_csv_path, "a") as test_tweet_csv_file:
-    test_tweet_csv_file.write("7,11,2022-07-21T09:35:15.000Z,")
+    test_tweet_csv_file.write("7,11,2022-07-21T09:35:15.000Z,,\n")
 
 
 class CreateDatasetFromRawText(unittest.TestCase):

@@ -39,7 +39,8 @@ preprocess_csv:
 		--source_path="data/raw/tweets.csv" \
 		--processed_dataset_path="data/processed/tweets" \
 		--max_seq_length=${max_seq_length} \
-		--shard_denominator=${shard_denominator}
+		--shard_denominator=${shard_denominator} \
+		--base_model_name=${base_model_name}
 
 preprocess_json: 
 	python3 -m src.data.make_dataset \
@@ -47,13 +48,14 @@ preprocess_json:
 		--source_path="data/raw/tweets.json" \
 		--processed_dataset_path="data/processed/tweets" \
 		--max_seq_length=${max_seq_length} \
-		--shard_denominator=${shard_denominator}
+		--shard_denominator=${shard_denominator} \
+		--base_model_name=${base_model_name}
 
 # Generate average user embeddings on the given dataset.
 embed:
 	python3 -m src.models.predict_model \
 		--processed_dataset_path="data/processed/tweets" \
-		--output_embeddings_json_path="data/artifacts/embeddings.json" \
+		--output_embeddings_json_path="data/artifacts/embeddings-${json_suffix}.json" \
 		--base_model_name=${base_model_name} \
 		--eval_per_device_batch_size=${eval_per_device_batch_size}
 
@@ -92,3 +94,6 @@ model_predict_tests: setup_data_tests preprocess_test_dataset run_model_predict_
 test_cleanup: data_test_cleanup
 
 test: data_tests model_predict_tests test_cleanup
+
+install_env:
+	pip3 install torch --extra-index-url https://download.pytorch.org/whl/cpu
