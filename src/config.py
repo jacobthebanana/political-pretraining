@@ -15,7 +15,10 @@ class ModelConfig:
 class DataConfig:
     source_format: str = field(default="csv")
     source_path: str = field(default="data/raw/tweets.csv")
-    processed_dataset_path: str = field(default="data/raw/tweets.csv")
+    processed_dataset_path: str = field(default="data/processed/tweets")
+    processed_lookup_by_uid_json_path: str = field(
+        default="data/processed/tweets/lookup_by_uid.json"
+    )
     output_embeddings_json_path: str = field(default="data/artifacts/embeddings.json")
     num_procs: int = field(default=32)
     # Keep only the last 1/shard_denominator of data.

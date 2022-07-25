@@ -47,9 +47,14 @@ preprocess_json:
 		--source_format=json \
 		--source_path="data/raw/tweets.json" \
 		--processed_dataset_path="data/processed/tweets" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets/lookup_by_uid.json" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name}
+
+show_dataset_stats: 
+	python3 -m src.data.print_dataset_stats \
+		--processed_dataset_path="data/processed/tweets"
 
 # Generate average user embeddings on the given dataset.
 embed:
@@ -78,7 +83,8 @@ run_model_predict_tests:
 preprocess_test_dataset:
 	python3 -m src.data.make_dataset \
 		--source_path="data/testing/raw/tweets.csv" \
-		--processed_dataset_path="data/testing/processed/tweets"
+		--processed_dataset_path="data/testing/processed/tweets" \
+		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" 
 
 test_show_dataset_stats: preprocess_test_dataset
 	python3 -m src.data.print_dataset_stats \

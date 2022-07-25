@@ -1,13 +1,16 @@
-from typing import Any, Container, Dict
+from typing import Any, Container, Dict, List, Tuple
+from collections import defaultdict
+import json
 
-import pandas as pd
 import datasets
 from datasets import Dataset, load_dataset, Value, Features
 from transformers import AutoTokenizer, HfArgumentParser
+from tqdm.auto import tqdm
 
 from ..config import ModelConfig, DataConfig
 
 Dataset = datasets.arrow_dataset.Dataset
+UserID = str
 
 
 def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
@@ -91,6 +94,33 @@ def preprocess_and_tokenize_dataset(
     return processed_dataset
 
 
+def create_uid_lookup(
+    dataset: datasets.arrow_dataset.Dataset,
+) -> Dict[UserID, Tuple[int, ...]]:
+    """
+    Return a dictionary for looking up tweet indices in the given dataset
+    by the uid of the author.
+
+    Args:
+     dataset: HuggingFace dataset, either raw or processed.
+
+    Returns:
+     Dictionary mapping uid strings to arrays of dataset indices.
+    """
+    lookup_dictionary: defaultdict[str, List[int]] = defaultdict(list)
+    for index, dataset_entry in enumerate(
+        tqdm(dataset, desc="Generating lookup dictionary.")
+    ):
+        uid = dataset_entry["uid"]  # type: ignore
+        lookup_dictionary[uid].append(index)
+
+    output: Dict[UserID, Tuple[int, ...]] = {}
+    for uid, dataset_indices in tqdm(lookup_dictionary.items(), leave=False):
+        output[uid] = tuple(dataset_indices)
+
+    return output
+
+
 def main():
     parser = HfArgumentParser((ModelConfig, DataConfig))
     model_args, data_args = parser.parse_args_into_dataclasses()
@@ -102,6 +132,10 @@ def main():
         raw_dataset, model_args, data_args
     )
     processed_dataset.save_to_disk(data_args.processed_dataset_path)
+
+    uid_lookup = create_uid_lookup(processed_dataset)
+    with open(data_args.processed_lookup_by_uid_json_path, "w") as uid_lookup_json_file:
+        json.dump(uid_lookup, uid_lookup_json_file)
 
 
 if __name__ == "__main__":
