@@ -1,18 +1,31 @@
 from typing import Any, Container, Dict, Tuple
+from typing_extensions import Literal
+from enum import Enum
+
+
 from dataclasses import dataclass, field
 
 
-BatchTokenKeys = str  # "input_ids", "attention_mask"
-BatchInfoKeys = str  # "uid"
+BatchTokenKeys = Literal["input_ids", "attention_mask"]
+BatchInfoKeys = Literal["uid", "tid"]
 UserID = str
 
 LookupByUID = Dict[UserID, Tuple[int, ...]]
 
 
-@dataclass
+class PoolingStrategy(Enum):
+    CLS_EMBEDDING_WITH_DENSE_LAYER = "cls_embedding_with_dense_layer"
+    CLS_EMBEDDING_ONLY = "cls_embedding_only"
+    WORD_EMBEDDING_MEAN = "word_embedding_mean"
+
+
+@dataclass(frozen=True)
 class ModelConfig:
     base_model_name: str = field(default="roberta-base")
     max_seq_length: int = field(default=128)
+    pooling_strategy: PoolingStrategy = field(
+        default=PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
+    )
 
 
 @dataclass

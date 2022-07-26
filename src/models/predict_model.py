@@ -17,6 +17,7 @@ from ..config import (
     ModelConfig,
     PipelineConfig,
     BatchTokenKeys,
+    PoolingStrategy,
 )
 
 Dataset = datasets.arrow_dataset.Dataset
@@ -61,6 +62,7 @@ def get_dataloader(
 def _run_batch_inference_single_shard(
     batch: Dict[BatchTokenKeys, Array],
     model: FlaxRobertaModel,
+    model_args: ModelConfig,
     model_params: Dict,
 ) -> Array:
     """
@@ -75,18 +77,27 @@ def _run_batch_inference_single_shard(
      ndarray of (batch_size, embedding_dimension).
     """
     outputs = model(**batch, params=model_params)
-    embeddings = outputs.pooler_output  # type: ignore
-    return embeddings
+    word_embeddings: Array = outputs.last_hidden_state  # type: ignore
+
+    if model_args.pooling_strategy == PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER:
+        pooled_embeddings = outputs.pooler_output  # type: ignore
+    elif model_args.pooling_strategy == PoolingStrategy.CLS_EMBEDDING_ONLY:
+        pooled_embeddings = word_embeddings[:, 0, :]
+    elif model_args.pooling_strategy == PoolingStrategy.WORD_EMBEDDING_MEAN:
+        pooled_embeddings = jnp.mean(word_embeddings, axis=1)
+
+    return pooled_embeddings
 
 
 _run_batch_inference_sharded = jax.pmap(
-    _run_batch_inference_single_shard, static_broadcasted_argnums=1
+    _run_batch_inference_single_shard, static_broadcasted_argnums=(1, 2)
 )
 
 
 def run_batch_inference(
     batch_tokens: Dict[BatchTokenKeys, Array],
     model: FlaxRobertaModel,
+    model_args: ModelConfig,
 ) -> Array:
     """
     Return the sentence-level embeddings for texts in this batch.
@@ -102,20 +113,23 @@ def run_batch_inference(
     """
     sharded_model_params = replicate(model.params)
     sharded_embeddings: Array = _run_batch_inference_sharded(
-        batch_tokens, model, sharded_model_params
+        batch_tokens, model, model_args, sharded_model_params
     )
     embeddings = sharded_embeddings.reshape((-1, sharded_embeddings.shape[-1]))
     return embeddings
 
 
 def _get_uid_tally_dict(
-    model: FlaxRobertaModel, dataloader: Iterator[Batch], num_batches: int
+    model: FlaxRobertaModel,
+    dataloader: Iterator[Batch],
+    num_batches: int,
+    model_args: ModelConfig,
 ) -> Dict[str, TweetUser]:
 
     uid_lookup_dict: Dict[str, TweetUser] = {}
 
     for batch in tqdm(dataloader, total=num_batches, ncols=NUM_COLUMNS):
-        embeddings = run_batch_inference(batch.tokens, model)
+        embeddings = run_batch_inference(batch.tokens, model, model_args)
         uids = batch.info["uid"]
 
         for embedding, uid in tqdm(
@@ -173,7 +187,7 @@ def main():
         model_args.base_model_name, from_pt=True
     )
 
-    uid_lookup_dict = _get_uid_tally_dict(model, dataloader, num_batches)
+    uid_lookup_dict = _get_uid_tally_dict(model, dataloader, num_batches, model_args)
     uid_lookup_output = _compute_mean_embeddings(uid_lookup_dict)
 
     with open(data_args.output_embeddings_json_path, "w") as output_json_file:

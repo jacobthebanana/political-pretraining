@@ -2,3 +2,4 @@ flax
 optax
 datasets
 transformers
+typing_extensions

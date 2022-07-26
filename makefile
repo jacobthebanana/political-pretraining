@@ -63,7 +63,8 @@ embed:
 		--processed_dataset_path="data/processed/tweets" \
 		--output_embeddings_json_path="data/artifacts/embeddings-${json_suffix}.json" \
 		--base_model_name=${base_model_name} \
-		--eval_per_device_batch_size=${eval_per_device_batch_size}
+		--eval_per_device_batch_size=${eval_per_device_batch_size} \
+		--pooling_strategy=${pooling_strategy}
 
 # Set up truncated dataset for testing.
 setup_data_tests:

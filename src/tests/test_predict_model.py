@@ -19,7 +19,7 @@ from ..models.predict_model import (
     _compute_mean_embeddings,
 )
 
-from ..config import PipelineConfig, ModelConfig, BatchTokenKeys
+from ..config import PipelineConfig, ModelConfig, BatchTokenKeys, PoolingStrategy
 
 Dataset = datasets.arrow_dataset.Dataset
 
@@ -77,9 +77,9 @@ class GetDataLoaderFromProcessedDataset(unittest.TestCase):
 
 class RunInferenceOnTextBatch(unittest.TestCase):
     def setUp(self):
-        preprocessed_dataset: Dataset = load_from_disk(test_processed_dataset_path)  # type: ignore
+        self.preprocessed_dataset: Dataset = load_from_disk(test_processed_dataset_path) # type: ignore
 
-        self.dataloader = get_dataloader(preprocessed_dataset, pipeline_args)
+        self.dataloader = get_dataloader(self.preprocessed_dataset, pipeline_args)  # type: ignore
         self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
             model_args.base_model_name
         )
@@ -88,9 +88,31 @@ class RunInferenceOnTextBatch(unittest.TestCase):
         )
 
     def test_run_batch_inference_shape(self):
+        for pooling_strategy in PoolingStrategy:
+            model_args_with_pooling_strategy = ModelConfig(
+                pooling_strategy=pooling_strategy
+            )
+            dataloader = get_dataloader(self.preprocessed_dataset, pipeline_args)
+            for batch in dataloader:
+                embeddings: jax.numpy.ndarray = run_batch_inference(
+                    batch.tokens, self.model, model_args_with_pooling_strategy
+                )
+
+                self.assertEqual(
+                    embeddings.shape[0],
+                    num_devices * eval_per_device_batch_size,
+                    "Number of outputs should match actual batch size.",
+                )
+                self.assertEqual(
+                    embeddings.shape[-1],
+                    self.hf_model_config.hidden_size,
+                    "Embedding dim should match model specs.",
+                )
+
+    def test_run_batch_inference_shape_(self):
         for batch in self.dataloader:
             embeddings: jax.numpy.ndarray = run_batch_inference(
-                batch.tokens, self.model
+                batch.tokens, self.model, model_args
             )
 
             self.assertEqual(
@@ -121,7 +143,7 @@ class ComputeUserEmbeddingTallyAndMean(unittest.TestCase):
         self.num_batches = len(self.preprocessed_dataset) // batch_size
 
         self.user_embedding_tally = _get_uid_tally_dict(
-            self.model, self.dataloader, self.num_batches
+            self.model, self.dataloader, self.num_batches, model_args
         )
 
         self.hf_model_config: RobertaConfig = AutoConfig.from_pretrained(
