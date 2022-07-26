@@ -1,13 +1,11 @@
 """
 Logic for generating per-user average embeddings of a given dataset.
 """
-from dataclasses import dataclass, field
-from typing import Iterator, Dict, List, Union
+from typing import Iterator, Dict, List
 import json
 import numpy as np
 import jax
 import jax.numpy as jnp
-from flax.training.common_utils import shard
 from flax.jax_utils import replicate
 import datasets
 from datasets import load_from_disk
@@ -19,47 +17,13 @@ from ..config import (
     ModelConfig,
     PipelineConfig,
     BatchTokenKeys,
-    BatchInfoKeys,
 )
 
 Dataset = datasets.arrow_dataset.Dataset
 Array = jax.numpy.ndarray
 NUM_COLUMNS = 80
 
-
-@dataclass
-class Batch:
-    """
-    Batch yielded from the dataloader.
-    """
-
-    info: Dict[BatchInfoKeys, str]
-    tokens: Dict[BatchTokenKeys, Array]
-
-
-@dataclass
-class TweetUser:
-    """
-    Dataclass for holding the sum of embedding vectors for each user
-    before calculating per-user avg. embeddings.
-    """
-
-    # Embedding sum is not initialized here since embedding_dim isn't specified.
-    embedding_sum: Array
-    num_tweets_processed: int = field(default=0)
-
-
-def _reshape_batch(batch: Dict[str, Union[Array, str]]) -> Batch:
-    batch_info: Dict[str, str] = {k: batch[k] for k in ["uid", "tid"]}  # type: ignore
-    batch_tokens: Dict[str, Array] = {
-        k: np.array(batch[k]) for k in ["input_ids", "attention_mask"]
-    }  # type: ignore
-
-    # Only tokens are processed on the accelerators.
-    # Batch_info is for the CPUs and doesn't require sharding.
-    sharded_batch_tokens = shard(batch_tokens)
-
-    return Batch(tokens=sharded_batch_tokens, info=batch_info)
+from .model_utils import Batch, TweetUser, reshape_batch
 
 
 def get_dataloader(
@@ -83,14 +47,14 @@ def get_dataloader(
 
     for j in range(num_batches):
         batch = dataset[j * batch_size : (j + 1) * batch_size]
-        formatted_batch = _reshape_batch(batch)
+        formatted_batch = reshape_batch(batch)
 
         yield formatted_batch
 
     if include_leftovers:
         leftover_batch = dataset[-batch_size:]
 
-        formatted_leftover_batch = _reshape_batch(leftover_batch)
+        formatted_leftover_batch = reshape_batch(leftover_batch)
         yield formatted_leftover_batch
 
 

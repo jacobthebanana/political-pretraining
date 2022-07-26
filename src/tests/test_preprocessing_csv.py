@@ -1,11 +1,14 @@
 import unittest
 
+import json
 import datasets
+from tqdm.auto import tqdm
 
 from ..data.make_dataset import (
     create_raw_hf_dataset,
     filter_hf_dataset_by_uid,
     preprocess_and_tokenize_dataset,
+    create_uid_lookup,
 )
 from ..config import ModelConfig, DataConfig
 
@@ -81,3 +84,24 @@ class PreprocessAndTokenizeDataset(unittest.TestCase):
 
         for feature in ["input_ids", "attention_mask"]:
             self.assertIn(feature, self.preprocessed_dataset.features)
+
+
+class CreateUidLookupTable(unittest.TestCase):
+    def setUp(self):
+        self.dataset = create_raw_hf_dataset(data_args)
+        self.uid_lookup = create_uid_lookup(self.dataset)
+
+    def test_lookup_table_completeness(self):
+        num_lookup_entries = sum(map(len, self.uid_lookup.values()))
+        self.assertEqual(num_lookup_entries, len(self.dataset))
+
+    def test_lookup_table_accuracy(self):
+        for uid, dataset_indices in tqdm(self.uid_lookup.items(), leave=False):
+            matched_entries = self.dataset[dataset_indices]
+            matched_uids = matched_entries["uid"]
+            for matched_uid in matched_uids:
+                self.assertEqual(matched_uid, uid)
+
+    def test_lookup_table_json_compatibility(self):
+        lookup_table_json: str = json.dumps(self.uid_lookup)
+        self.assertIsNotNone(lookup_table_json)

@@ -7,10 +7,9 @@ from datasets import Dataset, load_dataset, Value, Features
 from transformers import AutoTokenizer, HfArgumentParser
 from tqdm.auto import tqdm
 
-from ..config import ModelConfig, DataConfig
+from ..config import ModelConfig, DataConfig, LookupByUID, UserID
 
 Dataset = datasets.arrow_dataset.Dataset
-UserID = str
 
 
 def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
@@ -96,7 +95,7 @@ def preprocess_and_tokenize_dataset(
 
 def create_uid_lookup(
     dataset: datasets.arrow_dataset.Dataset,
-) -> Dict[UserID, Tuple[int, ...]]:
+) -> LookupByUID:
     """
     Return a dictionary for looking up tweet indices in the given dataset
     by the uid of the author.

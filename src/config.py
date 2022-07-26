@@ -1,8 +1,12 @@
+from typing import Any, Container, Dict, Tuple
 from dataclasses import dataclass, field
 
 
 BatchTokenKeys = str  # "input_ids", "attention_mask"
 BatchInfoKeys = str  # "uid"
+UserID = str
+
+LookupByUID = Dict[UserID, Tuple[int, ...]]
 
 
 @dataclass

@@ -3,7 +3,6 @@ import unittest
 import json
 import jax
 import chex
-from flax.jax_utils import replicate
 import datasets
 from datasets import load_from_disk
 from transformers import (
@@ -25,7 +24,7 @@ from ..config import PipelineConfig, ModelConfig, BatchTokenKeys
 Dataset = datasets.arrow_dataset.Dataset
 
 test_processed_dataset_path = "data/testing/processed/tweets"
-num_devices = len(jax.devices())
+num_devices = jax.device_count()
 eval_per_device_batch_size = 2
 effective_batch_size = num_devices * eval_per_device_batch_size
 
