@@ -1,6 +1,8 @@
-from typing import Any, Container, Dict, List, Tuple
+from typing import Any, Container, Dict, List, Tuple, Iterable
 from collections import defaultdict
+import multiprocessing
 import json
+from dataclasses import dataclass
 
 import datasets
 from datasets import Dataset, load_dataset, Value, Features
@@ -10,6 +12,13 @@ from tqdm.auto import tqdm
 from ..config import ModelConfig, DataConfig, LookupByUID, UserID
 
 Dataset = datasets.arrow_dataset.Dataset
+
+
+@dataclass
+class _DATASET_SHARD_FOR_INDEXING:
+    dataset_shard: datasets.arrow_dataset.Dataset
+    offset: int
+    num_shards: int
 
 
 def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
@@ -93,31 +102,82 @@ def preprocess_and_tokenize_dataset(
     return processed_dataset
 
 
-def create_uid_lookup(
-    dataset: datasets.arrow_dataset.Dataset,
+def _create_uid_lookup_on_shard(
+    shard: _DATASET_SHARD_FOR_INDEXING,
 ) -> LookupByUID:
     """
     Return a dictionary for looking up tweet indices in the given dataset
-    by the uid of the author.
+    shard by the uid of the author.
 
     Args:
      dataset: HuggingFace dataset, either raw or processed.
+     base_index: Index of the first entry in the shard in the full dataset.
 
     Returns:
      Dictionary mapping uid strings to arrays of dataset indices.
     """
     lookup_dictionary: defaultdict[str, List[int]] = defaultdict(list)
     for index, dataset_entry in enumerate(
-        tqdm(dataset, desc="Generating lookup dictionary.")
+        tqdm(shard.dataset_shard, desc=f"Lookup {shard.offset}/{shard.num_shards}", ncols=80)
     ):
         uid = dataset_entry["uid"]  # type: ignore
-        lookup_dictionary[uid].append(index)
+        lookup_dictionary[uid].append(index * shard.num_shards + shard.offset)
 
     output: Dict[UserID, Tuple[int, ...]] = {}
     for uid, dataset_indices in tqdm(lookup_dictionary.items(), leave=False):
         output[uid] = tuple(dataset_indices)
 
     return output
+
+
+def _merge_lookup_shards(lookup_shards: List[LookupByUID]) -> LookupByUID:
+    """
+    Merge lookup dictionaries by UID.
+    """
+    lookup_merged: Dict[str, List[int]] = defaultdict(list)
+    for lookup_shard in tqdm(lookup_shards, desc="Merging lookups"):
+        for uid, indices in lookup_shard.items():
+            lookup_merged[uid].extend(indices)
+
+    lookup_output: LookupByUID = {}
+    for uid, indices in lookup_merged.items():
+        lookup_output[uid] = tuple(indices)
+
+    return lookup_output
+
+
+def create_uid_lookup(
+    dataset: datasets.arrow_dataset.Dataset,
+    data_args: DataConfig,
+) -> LookupByUID:
+    """
+    Return a dictionary for looking up tweet indices in the given dataset
+    by the uid of the author. Runs in parallel.
+
+    Args:
+     dataset: HuggingFace dataset, either raw or processed.
+     data_args: Provides num_procs details.
+
+    Returns:
+     Dictionary mapping uid strings to arrays of dataset indices.
+    """
+    shards: List[_DATASET_SHARD_FOR_INDEXING] = []
+    num_shards = data_args.num_procs
+    base_entry_index = 0
+    for shard_index in tqdm(range(num_shards), desc="Creating shards."):
+        dataset_shard = dataset.shard(num_shards=num_shards, index=shard_index)
+        shard = _DATASET_SHARD_FOR_INDEXING(
+            dataset_shard=dataset_shard, offset=shard_index, num_shards=num_shards
+        )
+        shards.append(shard)
+        base_entry_index += len(dataset_shard)
+
+    with multiprocessing.Pool(data_args.num_procs) as pool:
+        lookup_by_uid_sharded: List[LookupByUID] = pool.map(
+            _create_uid_lookup_on_shard, shards
+        )
+
+    return _merge_lookup_shards(lookup_by_uid_sharded)
 
 
 def main():
@@ -133,7 +193,7 @@ def main():
     processed_dataset.save_to_disk(data_args.processed_dataset_path)
 
     if data_args.enable_indexing:
-        uid_lookup = create_uid_lookup(processed_dataset)
+        uid_lookup = create_uid_lookup(processed_dataset, data_args)
         with open(
             data_args.processed_lookup_by_uid_json_path, "w"
         ) as uid_lookup_json_file:

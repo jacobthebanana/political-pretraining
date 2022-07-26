@@ -89,7 +89,7 @@ class PreprocessAndTokenizeDataset(unittest.TestCase):
 class CreateUidLookupTable(unittest.TestCase):
     def setUp(self):
         self.dataset = create_raw_hf_dataset(data_args)
-        self.uid_lookup = create_uid_lookup(self.dataset)
+        self.uid_lookup = create_uid_lookup(self.dataset, data_args)
 
     def test_lookup_table_completeness(self):
         num_lookup_entries = sum(map(len, self.uid_lookup.values()))
