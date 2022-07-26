@@ -132,9 +132,12 @@ def main():
     )
     processed_dataset.save_to_disk(data_args.processed_dataset_path)
 
-    uid_lookup = create_uid_lookup(processed_dataset)
-    with open(data_args.processed_lookup_by_uid_json_path, "w") as uid_lookup_json_file:
-        json.dump(uid_lookup, uid_lookup_json_file)
+    if data_args.enable_indexing:
+        uid_lookup = create_uid_lookup(processed_dataset)
+        with open(
+            data_args.processed_lookup_by_uid_json_path, "w"
+        ) as uid_lookup_json_file:
+            json.dump(uid_lookup, uid_lookup_json_file)
 
 
 if __name__ == "__main__":

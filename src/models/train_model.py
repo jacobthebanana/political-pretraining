@@ -45,11 +45,10 @@ def get_train_dataloader(
     neg_batch_size = pipeline_args.eval_per_device_batch_size * jax.device_count()
 
     num_anc_batches = len(dataset) // anc_batch_size
-    num_neg_batches = len(dataset) // neg_batch_size
     for j in range(num_anc_batches):
         anc_indices = anc_perms[j * anc_batch_size : (j + 1) * anc_batch_size]
 
-        # The batch size of anc_batch is smaller than tha tof neg_batch.
+        # The batch size of anc_batch is smaller than that of neg_batch.
         # Hence, sampling from the neg_batch might need to be repeated.
         neg_candidate_indices = jnp.take(
             neg_candidate_perms,

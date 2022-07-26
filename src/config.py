@@ -27,6 +27,8 @@ class DataConfig:
     num_procs: int = field(default=32)
     # Keep only the last 1/shard_denominator of data.
     shard_denominator: int = field(default=1)
+    # Whether to generate the lookup_by_uid json.
+    enable_indexing: bool = field(default=True)
 
 
 @dataclass

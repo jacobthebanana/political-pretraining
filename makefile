@@ -40,8 +40,8 @@ preprocess_csv:
 		--processed_dataset_path="data/processed/tweets" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
-		--base_model_name=${base_model_name}
-
+		--base_model_name=${base_model_name} \
+		--enable_indexing=${enable_indexing}
 preprocess_json: 
 	python3 -m src.data.make_dataset \
 		--source_format=json \
@@ -50,7 +50,8 @@ preprocess_json:
 		--processed_lookup_by_uid_json_path="data/processed/tweets/lookup_by_uid.json" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
-		--base_model_name=${base_model_name}
+		--base_model_name=${base_model_name} \
+		--enable_indexing=${enable_indexing}
 
 show_dataset_stats: 
 	python3 -m src.data.print_dataset_stats \
