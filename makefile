@@ -38,6 +38,7 @@ preprocess_csv:
 		--source_format=csv \
 		--source_path="data/raw/tweets.csv" \
 		--processed_dataset_path="data/processed/tweets" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets/lookup_by_uid.json" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \

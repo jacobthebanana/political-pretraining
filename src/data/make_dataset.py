@@ -118,7 +118,11 @@ def _create_uid_lookup_on_shard(
     """
     lookup_dictionary: defaultdict[str, List[int]] = defaultdict(list)
     for index, dataset_entry in enumerate(
-        tqdm(shard.dataset_shard, desc=f"Lookup {shard.offset}/{shard.num_shards}", ncols=80)
+        tqdm(
+            shard.dataset_shard,
+            desc=f"Lookup {shard.offset}/{shard.num_shards}",
+            ncols=80,
+        )
     ):
         uid = dataset_entry["uid"]  # type: ignore
         lookup_dictionary[uid].append(index * shard.num_shards + shard.offset)
@@ -193,11 +197,14 @@ def main():
     processed_dataset.save_to_disk(data_args.processed_dataset_path)
 
     if data_args.enable_indexing:
-        uid_lookup = create_uid_lookup(processed_dataset, data_args)
+        dataset_for_indexing = processed_dataset.remove_columns(
+            ["text", "input_ids", "attention_mask"]
+        )
+        uid_lookup = create_uid_lookup(dataset_for_indexing, data_args)
         with open(
             data_args.processed_lookup_by_uid_json_path, "w"
         ) as uid_lookup_json_file:
-            json.dump(uid_lookup, uid_lookup_json_file)
+            json.dump(uid_lookup, uid_lookup_json_file, indent=2)
 
 
 if __name__ == "__main__":
