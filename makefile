@@ -43,7 +43,8 @@ preprocess_csv:
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \
 		--enable_indexing=${enable_indexing} \
-		--rerun_tokenization=${rerun_tokenization}
+		--rerun_tokenization=${rerun_tokenization} \
+		--num_procs=${num_procs}
 
 preprocess_json: 
 	python3 -m src.data.make_dataset \
@@ -55,7 +56,8 @@ preprocess_json:
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \
 		--enable_indexing=${enable_indexing} \
-		--rerun_tokenization=${rerun_tokenization}
+		--rerun_tokenization=${rerun_tokenization} \
+		--num_procs=${num_procs}
 
 show_dataset_stats: 
 	python3 -m src.data.print_dataset_stats \
