@@ -42,7 +42,9 @@ preprocess_csv:
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \
-		--enable_indexing=${enable_indexing}
+		--enable_indexing=${enable_indexing} \
+		--rerun_tokenization=${rerun_tokenization}
+
 preprocess_json: 
 	python3 -m src.data.make_dataset \
 		--source_format=json \
@@ -52,7 +54,8 @@ preprocess_json:
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \
-		--enable_indexing=${enable_indexing}
+		--enable_indexing=${enable_indexing} \
+		--rerun_tokenization=${rerun_tokenization}
 
 show_dataset_stats: 
 	python3 -m src.data.print_dataset_stats \

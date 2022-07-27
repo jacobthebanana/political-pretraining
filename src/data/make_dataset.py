@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 
 import datasets
-from datasets import Dataset, load_dataset, Value, Features
+from datasets import Dataset, load_dataset, load_from_disk, Value, Features
 from transformers import AutoTokenizer, HfArgumentParser
 from tqdm.auto import tqdm
 
@@ -190,11 +190,16 @@ def main():
     model_args: ModelConfig
     data_args: DataConfig
 
-    raw_dataset = create_raw_hf_dataset(data_args)
-    processed_dataset = preprocess_and_tokenize_dataset(
-        raw_dataset, model_args, data_args
-    )
-    processed_dataset.save_to_disk(data_args.processed_dataset_path)
+    if data_args.rerun_tokenization:
+        raw_dataset = create_raw_hf_dataset(data_args)
+        processed_dataset = preprocess_and_tokenize_dataset(
+            raw_dataset, model_args, data_args
+        )
+        processed_dataset.save_to_disk(data_args.processed_dataset_path)
+    else:
+        processed_dataset: Dataset = load_from_disk(
+            data_args.processed_dataset_path
+        )  # type: ignore
 
     if data_args.enable_indexing:
         dataset_for_indexing = processed_dataset.remove_columns(

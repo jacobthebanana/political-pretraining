@@ -42,6 +42,8 @@ class DataConfig:
     shard_denominator: int = field(default=1)
     # Whether to generate the lookup_by_uid json.
     enable_indexing: bool = field(default=True)
+    # Whether to tokenize the dataset instead of loading the saved one.
+    rerun_tokenization: bool = field(default=True)
 
 
 @dataclass
