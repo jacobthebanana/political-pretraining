@@ -120,7 +120,7 @@ def _create_uid_lookup_on_shard(
     for index, dataset_entry in enumerate(
         tqdm(
             shard.dataset_shard,
-            desc=f"Lookup {shard.offset}/{shard.num_shards}",
+            desc=f"Indexing {shard.offset:2d}/{shard.num_shards}",
             ncols=80,
         )
     ):
@@ -168,7 +168,7 @@ def create_uid_lookup(
     shards: List[_DATASET_SHARD_FOR_INDEXING] = []
     num_shards = data_args.num_procs
     base_entry_index = 0
-    for shard_index in tqdm(range(num_shards), desc="Creating shards."):
+    for shard_index in tqdm(range(num_shards), desc="Creating shards"):
         dataset_shard = dataset.shard(num_shards=num_shards, index=shard_index)
         shard = _DATASET_SHARD_FOR_INDEXING(
             dataset_shard=dataset_shard, offset=shard_index, num_shards=num_shards

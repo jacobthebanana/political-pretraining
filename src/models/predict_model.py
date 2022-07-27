@@ -78,12 +78,16 @@ def _run_batch_inference_single_shard(
     """
     outputs = model(**batch, params=model_params)
     word_embeddings: Array = outputs.last_hidden_state  # type: ignore
+    pooling_strategy = model_args.pooling_strategy
 
-    if model_args.pooling_strategy == PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER:
+    if (
+        PoolingStrategy(pooling_strategy)
+        is PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
+    ):
         pooled_embeddings = outputs.pooler_output  # type: ignore
-    elif model_args.pooling_strategy == PoolingStrategy.CLS_EMBEDDING_ONLY:
+    elif PoolingStrategy(pooling_strategy) is PoolingStrategy.CLS_EMBEDDING_ONLY:
         pooled_embeddings = word_embeddings[:, 0, :]
-    elif model_args.pooling_strategy == PoolingStrategy.WORD_EMBEDDING_MEAN:
+    elif PoolingStrategy(pooling_strategy) is PoolingStrategy.WORD_EMBEDDING_MEAN:
         pooled_embeddings = jnp.mean(word_embeddings, axis=1)
 
     return pooled_embeddings
