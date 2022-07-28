@@ -29,9 +29,11 @@ from .model_utils import (
     get_pooling_fn,
     ShardedModelParams,
     ModelParams,
+    squared_l2_distance,
 )
 from ..config import PipelineConfig, ModelConfig, UserID, LookupByUID
 
+Array = jnp.ndarray
 PRNGKey = jax.random.KeyArray
 
 
@@ -61,8 +63,10 @@ def get_train_dataloader(
         prng_key, num=3
     )
 
-    anc_perms = jax.random.shuffle(anc_prng_key, dataset_indices)
-    neg_candidate_perms = jax.random.shuffle(neg_candidate_prng_key, dataset_indices)
+    anc_perms = jax.random.permutation(anc_prng_key, dataset_indices)
+    neg_candidate_perms = jax.random.permutation(
+        neg_candidate_prng_key, dataset_indices
+    )
 
     anc_batch_size = pipeline_args.train_per_device_batch_size * jax.device_count()
     neg_batch_size = pipeline_args.eval_per_device_batch_size * jax.device_count()
@@ -142,25 +146,95 @@ _embed_mining_batch: Callable[
 ] = jax.pmap(_embed_mining_batch_single_shard, static_broadcasted_argnums=(1, 2))
 
 
-# def get_anc_neg_distance(mining_batch: MiningBatch) -> Array:
-#   """
-#   Return the pairwise distance between anchors and
-#   negative examples.
+def get_anc_neg_distance(batch_embeddings: BatchEmbeddings) -> Array:
+    """
+    Return the pairwise distance between anchors and
+    negative examples. Also see notebooks/jjt-anc-neg-distance-matrix.ipynb.
 
-#   If there are n_anc anchors and n_neg negative examples,
-#   the output of this function would be (n_neg, n_anc),
-#   where the (j, k) entry is the distance between the j-th neg embedding
-#   and the k-th anc embedding.
-#   """
+    Args:
+     batch_embeddings: from _embed_mining_batch, but with the device dimension
+      and the batch dimension flattened into one. In other words, for anc and pos,
+      the embeddings is of shape (train_batch_size * num_devices, embedding_dim),
+      denoted as (n_anc, embedding_dim).
+      For neg, the embeddings is of shape
+      (eval_batch_size * num_devices, embedding_dim), denoted as
+      (n_neg, embedding_dim).
 
-# def get_margins(mining_batch: MiningBatch) -> Array:
-#   """
-#   Returns:
-#    the pairwise margins d(a - n) - d(a - p).
-#    If there are n_anc = n_pos anchors and positive examples, and
-#    n_neg negative examples, the output of this function would be (n_anc, n_neg).
-#    The (j, k) entry would be the margin d(a_j, p_j) - d(a_j, n_k).
-#   """
+    Returns:
+     If there are n_anc anchors and n_neg negative examples,
+     the output of this function would be (n_neg, n_anc),
+     where the (j, k) entry is the distance between the j-th neg embedding
+     and the k-th anc embedding.
+    """
+
+    # (n_anc, embedding_dim)
+    anc_embeddings = batch_embeddings.anchor_embeddings
+    n_anc = anc_embeddings.shape[0]
+
+    # (n_neg, embedding_dim)
+    neg_embeddings = batch_embeddings.negative_embeddings
+    n_neg = neg_embeddings.shape[0]
+
+    embedding_dim = anc_embeddings.shape[-1]
+
+    # (n_anc, n_neg, embedding_dim)
+    anc_embeddings_repeated = jnp.repeat(anc_embeddings, n_neg, axis=-1).reshape(
+        (n_anc, n_neg, embedding_dim)
+    )
+
+    # (n_neg, n_anc, embedding_dim)
+    anc_embeddings_repeated_transposed = jnp.transpose(
+        anc_embeddings_repeated, axes=(1, 0, 2)
+    )
+
+    # (n_neg, n_anc, embedding_dim)
+    neg_embeddings_repeated = jnp.repeat(neg_embeddings, n_anc, axis=-1).reshape(
+        (n_neg, n_anc, embedding_dim)
+    )
+
+    # (n_anc, n_neg)
+    l2_difference = squared_l2_distance(
+        anc_embeddings_repeated_transposed, neg_embeddings_repeated
+    )
+
+    return l2_difference
+
+
+def get_margins(batch_embeddings: BatchEmbeddings) -> Array:
+    """
+    Returns:
+     the pairwise margins d(a - n) - d(a - p).
+     If there are n_anc = n_pos anchors and positive examples, and
+     n_neg negative examples, the output of this function would be (n_anc, n_neg).
+     The (j, k) entry would be the margin d(a_j, p_j) - d(a_j, n_k).
+    """
+    anc_embeddings = batch_embeddings.anchor_embeddings
+    pos_embeddings = batch_embeddings.positive_embeddings
+
+    n_anc = anc_embeddings.shape[0]
+    n_neg = batch_embeddings.negative_embeddings.shape[0]
+
+    # (n_anc,)
+    anc_pos_distances = squared_l2_distance(anc_embeddings, pos_embeddings)
+
+    # TODO: Explain why transposing is required here.
+    # (n_anc, n_neg)
+    anc_pos_distances_repeated = jnp.repeat(
+        anc_pos_distances,
+        repeats=n_neg,
+        axis=-1,  # Along the n_anc axis.
+    ).reshape((n_anc, n_neg))
+
+    # (n_neg, n_anc)
+    anc_pos_distances_repeated_transposed = jnp.transpose(
+        anc_pos_distances_repeated, axes=(1, 0)
+    )
+
+    # (n_neg, n_anc)
+    anc_neg_distances = get_anc_neg_distance(batch_embeddings)
+
+    return anc_neg_distances - anc_pos_distances_repeated_transposed
+
 
 # def get_triplet_masks
 

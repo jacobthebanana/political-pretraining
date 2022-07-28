@@ -5,6 +5,7 @@ from collections import Counter
 
 import jax
 import chex
+import jax.numpy as jnp
 from flax.jax_utils import replicate
 import datasets
 from datasets import load_from_disk
@@ -16,12 +17,18 @@ from transformers import (
 )
 from tqdm.auto import tqdm
 
-from ..models.train_model import get_train_dataloader, _embed_mining_batch
+from ..models.train_model import (
+    get_train_dataloader,
+    get_anc_neg_distance,
+    get_margins,
+    _embed_mining_batch,
+)
 from ..models.model_utils import (
     TokenBatch,
     get_token_batch,
     ModelParams,
     ShardedModelParams,
+    BatchEmbeddings,
 )
 from ..config import (
     DataConfig,
@@ -183,3 +190,69 @@ class EmbedBatchForTripletMining(unittest.TestCase):
                 )
                 self.assertEqual(embeddings.shape[-1], self.hf_model_config.hidden_size)
                 self.assertEqual(embeddings.shape[0], num_devices)
+
+
+class MiningDistanceCalculations(unittest.TestCase):
+    def setUp(self):
+        self.train_batch_size = 5  # anc batch size
+        self.eval_batch_size = 7  # neg batch size
+        self.embedding_dim = 11
+        self.placeholder_value = 5
+        self.placeholder_value_alt = -7
+
+        self.nonzero_distance = (
+            self.embedding_dim * self.placeholder_value * self.placeholder_value
+        )
+        self.nonzero_distance_alt = (
+            self.embedding_dim * self.placeholder_value_alt * self.placeholder_value_alt
+        )
+
+        # The output should be zero everywhere except along row 1 or column 0,
+        # but zero at (1, 0)
+        anc_embeddings = (
+            jnp.zeros((self.train_batch_size, self.embedding_dim))
+            .at[0, :]
+            .set(self.placeholder_value)
+        )
+        pos_embeddings = (
+            jnp.zeros((self.train_batch_size, self.embedding_dim))
+            .at[-1, :]
+            .set(-self.placeholder_value * 2)
+        )
+        neg_embeddings = (
+            jnp.zeros((self.eval_batch_size, self.embedding_dim))
+            .at[1, :]
+            .set(self.placeholder_value)
+        )
+
+        self.batch_embeddings = BatchEmbeddings(
+            anchor_embeddings=anc_embeddings,
+            positive_embeddings=pos_embeddings,
+            negative_embeddings=neg_embeddings,
+        )
+
+    def test_anc_neg_distance_output(self):
+        distances = get_anc_neg_distance(self.batch_embeddings)
+        chex.assert_shape(distances, (self.eval_batch_size, self.train_batch_size))
+
+        # Both anc and neg are zero.
+        self.assertTrue(jnp.all(distances[0, 1:] == 0))
+        self.assertTrue(jnp.all(distances[2:, 1:] == 0))
+        # Both anc and neg are non-zero.
+        self.assertTrue(jnp.all(distances[1, 0] == 0))
+        # anc is non-zero while neg is zero.
+        self.assertTrue(jnp.all(distances[0, 0] == self.nonzero_distance))
+        self.assertTrue(jnp.all(distances[2:, 0] == self.nonzero_distance))
+        # anc is zero while neg is non-zero.
+        self.assertTrue(jnp.all(distances[1, 1:] == self.nonzero_distance))
+
+    def test_anc_pos_neg_margin_output(self):
+        # TODO: refine this test case.
+        margins = get_margins(self.batch_embeddings)
+
+        # anc, neg, and pos are all zero.
+        self.assertTrue(jnp.all(margins[0, 0:-1] == 0))
+        self.assertTrue(jnp.all(margins[2:, 0:-1] == 0))
+
+        # anc and neg are zero, but pos is non-zero.
+        self.assertTrue(jnp.all(margins[1, 0] == -self.nonzero_distance))

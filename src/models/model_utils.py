@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from flax.training.common_utils import shard
 import jax
+import chex
 import jax.numpy as jnp
 from transformers.modeling_flax_outputs import FlaxBaseModelOutputWithPooling
 from ..config import BatchInfoKeys, BatchTokenKeys, ModelConfig, PoolingStrategy
@@ -175,7 +176,19 @@ def get_token_batch(mining_batch: BatchForMining) -> TokenBatch:
     return TokenBatch(*map(get_tokens, mining_batch))
 
 
-# def get_squared_l2_distance(x_1: Array, x_2: Array) -> Array:
-#     """
-#     Compute L2 distance along axis (-1).
-#     """
+def squared_l2_distance(x_1: Array, x_2: Array) -> Array:
+    """
+    Compute squared L2 distance along axis (-1).
+
+    Args:
+     x_1: (a, b, n)
+     x_2: (a, b, n)
+
+    Returns:
+     (a, b). || x_1 - x_2 ||^{2}.
+    """
+    chex.assert_equal_shape((x_1, x_2))
+    squared_difference = (x_1 - x_2) * (x_1 - x_2)
+
+    l2_difference: Array = jnp.sum(squared_difference, axis=-1)
+    return l2_difference
