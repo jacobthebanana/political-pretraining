@@ -1,13 +1,28 @@
 import unittest
+from typing import Dict
 import json
 from collections import Counter
 
 import jax
 import chex
+from flax.jax_utils import replicate
 import datasets
 from datasets import load_from_disk
+from transformers import (
+    FlaxAutoModel,
+    AutoConfig,
+    RobertaConfig,
+    FlaxRobertaModel,
+)
+from tqdm.auto import tqdm
 
-from ..models.train_model import get_train_dataloader
+from ..models.train_model import get_train_dataloader, _embed_mining_batch
+from ..models.model_utils import (
+    TokenBatch,
+    get_token_batch,
+    ModelParams,
+    ShardedModelParams,
+)
 from ..config import (
     DataConfig,
     ModelConfig,
@@ -109,9 +124,62 @@ class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
             for neg_tid in batch.negative_candidate_batch.info["tid"]:
                 neg_tid_counter[neg_tid] += 1
 
-        # Repetitions are not allowed except for neg_tids.
+        # Repetitions are not allowed except for tweet ids for neg.
         self.assertEqual(max(anc_tid_counter.values()), 1)
         self.assertEqual(min(anc_tid_counter.values()), 1)
         self.assertLessEqual(
             max(neg_tid_counter.values()) - min(neg_tid_counter.values()), 1
         )
+
+
+class EmbedBatchForTripletMining(unittest.TestCase):
+    def setUp(self):
+        self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
+            model_args.base_model_name
+        )
+        self.preprocessed_dataset: Dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
+        self.num_batches = (
+            len(self.preprocessed_dataset)
+            // (pipeline_args.train_per_device_batch_size * num_devices)
+            + 1
+        )
+
+        with open(
+            data_args.processed_lookup_by_uid_json_path, "r"
+        ) as lookup_by_uid_json_file:
+            self.lookup_by_uid: LookupByUID = json.load(lookup_by_uid_json_file)
+
+        self.hf_model_config: RobertaConfig = AutoConfig.from_pretrained(
+            model_args.base_model_name
+        )
+
+    def test_embed_shape(self):
+        dataloader = get_train_dataloader(
+            self.preprocessed_dataset,
+            self.lookup_by_uid,
+            jax.random.PRNGKey(0),
+            pipeline_args,
+        )
+
+        # Note that the dataloader shards data by default.
+        for batch in tqdm(
+            dataloader, total=self.num_batches, desc="Unit testing", ncols=80
+        ):
+            mining_batch = get_token_batch(batch)
+            model_params: ModelParams = self.model.params  # type: ignore
+            sharded_model_params: ShardedModelParams = replicate(model_params)
+            mining_embeddings = _embed_mining_batch(
+                mining_batch, self.model, model_args, sharded_model_params
+            )
+
+            for embeddings in (
+                mining_embeddings.anchor_embeddings,
+                mining_embeddings.positive_embeddings,
+            ):
+                # device, per_device_batch, embedding_dim.
+                self.assertEqual(len(embeddings.shape), 3)
+                self.assertEqual(
+                    embeddings.shape[1], pipeline_args.train_per_device_batch_size
+                )
+                self.assertEqual(embeddings.shape[-1], self.hf_model_config.hidden_size)
+                self.assertEqual(embeddings.shape[0], num_devices)

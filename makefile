@@ -88,7 +88,11 @@ run_data_tests:
 run_model_predict_tests:
 	python3 -m unittest src.tests.test_predict_model
 
+run_model_train_tests:
+	python3 -m unittest src.tests.test_train_model
+
 preprocess_test_dataset:
+	head -n 302 data/raw/tweets.csv > data/testing/raw/tweets.csv
 	python3 -m src.data.make_dataset \
 		--source_path="data/testing/raw/tweets.csv" \
 		--processed_dataset_path="data/testing/processed/tweets" \
@@ -103,7 +107,7 @@ data_test_cleanup:
 
 data_tests: setup_data_tests run_data_tests  
 
-model_predict_tests: setup_data_tests preprocess_test_dataset run_model_predict_tests
+model_predict_tests: setup_data_tests preprocess_test_dataset run_model_predict_tests run_model_train_tests
 
 test_cleanup: data_test_cleanup
 

@@ -10,6 +10,7 @@ from flax.jax_utils import replicate
 import datasets
 from datasets import load_from_disk
 from transformers import FlaxAutoModel, FlaxRobertaModel, HfArgumentParser
+from transformers.modeling_flax_outputs import FlaxBaseModelOutputWithPooling
 from tqdm.auto import tqdm
 
 from ..config import (
@@ -17,14 +18,13 @@ from ..config import (
     ModelConfig,
     PipelineConfig,
     BatchTokenKeys,
-    PoolingStrategy,
 )
 
 Dataset = datasets.arrow_dataset.Dataset
 Array = jax.numpy.ndarray
 NUM_COLUMNS = 80
 
-from .model_utils import Batch, TweetUser, reshape_batch
+from .model_utils import Batch, TweetUser, reshape_batch, get_pooling_fn
 
 
 def get_dataloader(
@@ -76,21 +76,11 @@ def _run_batch_inference_single_shard(
     Returns:
      ndarray of (batch_size, embedding_dimension).
     """
-    outputs = model(**batch, params=model_params)
-    word_embeddings: Array = outputs.last_hidden_state  # type: ignore
-    pooling_strategy = model_args.pooling_strategy
+    outputs: FlaxBaseModelOutputWithPooling = model(**batch, params=model_params)  # type: ignore
+    pooling_fn = get_pooling_fn(model_args)
+    embeddings = pooling_fn(outputs)
 
-    if (
-        PoolingStrategy(pooling_strategy)
-        is PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
-    ):
-        pooled_embeddings = outputs.pooler_output  # type: ignore
-    elif PoolingStrategy(pooling_strategy) is PoolingStrategy.CLS_EMBEDDING_ONLY:
-        pooled_embeddings = word_embeddings[:, 0, :]
-    elif PoolingStrategy(pooling_strategy) is PoolingStrategy.WORD_EMBEDDING_MEAN:
-        pooled_embeddings = jnp.mean(word_embeddings, axis=1)
-
-    return pooled_embeddings
+    return embeddings
 
 
 _run_batch_inference_sharded = jax.pmap(
