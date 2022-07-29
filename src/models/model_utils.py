@@ -101,15 +101,17 @@ class TokenBatch(NamedTuple):
 
 class FilteredTokenBatch(NamedTuple):
     """
-    Based on TokenBatch, but with all token types 
+    Based on TokenBatch, but with all token types
     (anc, pos, neg) of the same shape, plus triplet_margin array.
     """
+
     anchor_tokens: TokenizerOutput
     positive_tokens: TokenizerOutput
     negative_tokens: TokenizerOutput
-    
+
     triplet_margin: Array
-    
+
+
 class ShardedBatchEmbeddings(NamedTuple):
     """
     Embeddings for ShardedTokenBatch.
@@ -269,8 +271,8 @@ def array_index_tokenizer_output(
      array-indexed tokenizer_output.
     """
     output: TokenizerOutput = {
-        "attention_mask": tokenizer_output["attention_mask"][indices],
-        "input_ids": tokenizer_output["input_ids"][indices],
+        "attention_mask": tokenizer_output["attention_mask"][indices, :],
+        "input_ids": tokenizer_output["input_ids"][indices, :],
     }
 
     return output
