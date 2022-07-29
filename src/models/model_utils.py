@@ -1,4 +1,4 @@
-from typing import Dict, Union, NamedTuple, Callable
+from typing import Dict, Union, Tuple, Iterable, NamedTuple, Callable, overload
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -10,7 +10,11 @@ from transformers.modeling_flax_outputs import FlaxBaseModelOutputWithPooling
 from ..config import BatchInfoKeys, BatchTokenKeys, ModelConfig, PoolingStrategy
 
 Array = jax.numpy.ndarray
+
+# (n_anc, n_pos) boolean. True if eligible.
+TripletEligibilityMask = jax.numpy.ndarray
 Embeddings = jax.numpy.ndarray
+
 TokenizerOutput = Dict[BatchTokenKeys, Array]
 ModelParams = Dict
 ShardedModelParams = Dict
@@ -47,7 +51,7 @@ class TweetUser:
     num_tweets_processed: int = field(default=0)
 
 
-class BatchForMining(NamedTuple):
+class ShardedBatchForMining(NamedTuple):
     """
     NamedTuple of anchor entries, positive entries,
     as well as candidates of negative entries.
@@ -83,7 +87,7 @@ def reshape_batch(batch: Dict[str, Union[Array, str]]) -> Batch:
     return Batch(tokens=sharded_batch_tokens, info=batch_info)
 
 
-class ShardedTokenBatch(NamedTuple):
+class TokenBatch(NamedTuple):
     """
     NamedTuple of anchor tokens, positive tokens,
     as well as tokens of candidates of negative entries.
@@ -95,6 +99,17 @@ class ShardedTokenBatch(NamedTuple):
     negative_tokens: TokenizerOutput
 
 
+class FilteredTokenBatch(NamedTuple):
+    """
+    Based on TokenBatch, but with all token types 
+    (anc, pos, neg) of the same shape, plus triplet_margin array.
+    """
+    anchor_tokens: TokenizerOutput
+    positive_tokens: TokenizerOutput
+    negative_tokens: TokenizerOutput
+    
+    triplet_margin: Array
+    
 class ShardedBatchEmbeddings(NamedTuple):
     """
     Embeddings for ShardedTokenBatch.
@@ -108,7 +123,11 @@ class ShardedBatchEmbeddings(NamedTuple):
 # Same data format, but different shape
 # (arrays without the device dimension.)
 BatchEmbeddings = ShardedBatchEmbeddings
-TokenBatch = ShardedTokenBatch
+ShardedTokenBatch = TokenBatch
+
+# TokenBatch, but where anc, pos, and neg each includes
+# n_anc examples.
+ShardedFilteredTokenBatch = TokenBatch
 
 
 def get_pooling_fn(
@@ -159,7 +178,7 @@ def get_pooling_fn(
         return word_mean_pooler
 
 
-def get_token_batch(mining_batch: BatchForMining) -> TokenBatch:
+def get_token_batch(mining_batch: ShardedBatchForMining) -> TokenBatch:
     """
     Extract from a mining batch the tokens (and only tokens.)
 
@@ -192,3 +211,66 @@ def squared_l2_distance(x_1: Array, x_2: Array) -> Array:
 
     l2_difference: Array = jnp.sum(squared_difference, axis=-1)
     return l2_difference
+
+
+def _gather(sharded_array: Array) -> Array:
+    device_count = jax.device_count()
+
+    # Device dimension must be the first dimension.
+    chex.assert_axis_dimension(sharded_array, 0, device_count)
+    assert len(sharded_array.shape) >= 2
+
+    gathered_shape: Tuple[int, ...] = (
+        sharded_array.shape[0] * sharded_array.shape[1],
+        *sharded_array.shape[2:],
+    )
+    output_array = sharded_array.reshape(gathered_shape)
+
+    return output_array
+
+
+@overload
+def gather_shards(sharded_tree: ShardedTokenBatch) -> TokenBatch:
+    ...
+
+
+@overload
+def gather_shards(sharded_tree: ShardedBatchEmbeddings) -> BatchEmbeddings:
+    ...
+
+
+def gather_shards(sharded_tree):
+    """
+    Un-shard the tree (undo flax.common_utils.shard).
+
+    Args:
+     sharded_array: (device_count, batch_size, ...)
+
+    Returns:
+     (device_count * batch_size, ...)
+    """
+
+    return jax.tree_map(_gather, sharded_tree)
+
+
+def array_index_tokenizer_output(
+    tokenizer_output: TokenizerOutput, indices: Iterable[int]
+) -> TokenizerOutput:
+    """
+    Index the given tokenizer output with an iterable of indices.
+    Reusable (unlike lambda functions.)
+
+    Args:
+     tokenizer_output: from a HuggingFace tokenizer.
+     indices: Indices of entries to select from token_batch,
+     relatively-indexed within this token batch.
+
+    Returns:
+     array-indexed tokenizer_output.
+    """
+    output: TokenizerOutput = {
+        "attention_mask": tokenizer_output["attention_mask"][indices],
+        "input_ids": tokenizer_output["input_ids"][indices],
+    }
+
+    return output

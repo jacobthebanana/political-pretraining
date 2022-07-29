@@ -1,9 +1,10 @@
 """
 Functions required for the training pipeline, including dataloaders.
 """
-from typing import Iterator, Dict, Callable
+from typing import Iterator, Tuple, Dict, Callable
 import jax
 from jax import numpy as jnp
+from flax.training.common_utils import shard
 import numpy as np
 from datasets.arrow_dataset import Dataset
 from transformers import (
@@ -15,10 +16,13 @@ from transformers.modeling_flax_outputs import FlaxBaseModelOutputWithPooling
 
 from .model_utils import (
     Batch,
-    BatchForMining,
+    ShardedBatchForMining,
     TweetUser,
     BatchWithEmbeddings,
     BatchForMiningWithEmbeddings,
+    get_token_batch,
+    gather_shards,
+    TripletEligibilityMask,
     TokenizerOutput,
     TokenBatch,
     ShardedTokenBatch,
@@ -30,6 +34,9 @@ from .model_utils import (
     ShardedModelParams,
     ModelParams,
     squared_l2_distance,
+    ShardedFilteredTokenBatch,
+    FilteredTokenBatch,
+    array_index_tokenizer_output,
 )
 from ..config import PipelineConfig, ModelConfig, UserID, LookupByUID
 
@@ -42,7 +49,7 @@ def get_train_dataloader(
     lookup_by_uid: LookupByUID,
     prng_key: PRNGKey,
     pipeline_args: PipelineConfig,
-) -> Iterator[BatchForMining]:
+) -> Iterator[ShardedBatchForMining]:
     """
     Iterate through the dataset with on-the-fly shuffling.
     Note that neg candidates might be repeated if
@@ -96,7 +103,7 @@ def get_train_dataloader(
 
         pos_batch: Batch = reshape_batch(dataset[pos_indices])
 
-        yield BatchForMining(
+        yield ShardedBatchForMining(
             anchor_batch=anc_batch,
             positive_batch=pos_batch,
             negative_candidate_batch=neg_candidate_batch,
@@ -236,6 +243,99 @@ def get_margins(batch_embeddings: BatchEmbeddings) -> Array:
     return anc_neg_distances - anc_pos_distances_repeated_transposed
 
 
-# def get_triplet_masks
+def _get_neg_anc_indices(num_neg: int, num_anc: int) -> Tuple[Array, Array]:
+    """
+    Get retrieval keys for neg and anc/pos tokens.
 
-# def get_top_triplet_pairs
+    Recall that the (j, k) entry of margins is
+    d(a_k - n_j) - d(a_k - p_k).
+
+    The (j, k) entry of neg_indices_repeated is thus j, while
+    the (j, k) entry of anc_indices_repeated is k.
+
+    Args:
+     num_neg: number of neg examples.
+     num_anc: number of anchor/positive examples.
+
+    Returns:
+     neg_indices_repeated: (num_neg, num_anc), with the
+     (j, k) entry of neg_indices_repeated being j.
+
+     anc_indices_repeated: (num_neg, num_anc), with the
+     (j, k) entry of anc_indices_repeated being k.
+    """
+    neg_indices = jnp.arange(num_neg)
+    anc_indices = jnp.arange(num_anc)
+    neg_indices_repeated = jnp.repeat(neg_indices, num_anc).reshape((num_neg, num_anc))
+    anc_indices_repeated = (
+        jnp.repeat(anc_indices, num_neg).reshape((num_anc, num_neg)).T
+    )
+
+    return neg_indices_repeated, anc_indices_repeated
+
+
+def get_top_triplet_pairs(
+    mining_batch: ShardedBatchForMining,
+    model: FlaxRobertaModel,
+    model_args: ModelConfig,
+    sharded_model_params: ShardedModelParams,
+) -> FilteredTokenBatch:
+    """
+    Given a mining batch of tokens with n_anc examples of n_anc,
+    n_anc examples of pos, and n_neg examples of neg, return the
+    top n_anc (anc_k, pos_k, neg_j) combinations, sorted by margin
+    d(anc_k - pos_k) - d(anc_j, neg_j).
+
+    This function isn't sharded so as to maximize the effective
+    batch size and maximize the amount of information gained from
+    the batch. Margins computed on each accelerator are gathered for
+    comparison, sharded again, and sent to the devices.
+
+    Args:
+     mining_batch: BatchForMining with n_anc examples of anc, n_pos
+     examples of pos, and n_neg examples of neg.
+
+    Returns:
+     FilteredTokenBatch. anchor_tokens and positive_tokens are paired
+     as they were in the mining_batch input. However, these anc_pos pairs might
+     be repeated to maximize the margin d(anc_k - pos_k) - d(anc_j, neg_j).
+    """
+    batch_tokens: ShardedTokenBatch = get_token_batch(mining_batch)
+    sharded_batch_embeddings: ShardedBatchEmbeddings = _embed_mining_batch(
+        batch_tokens, model, model_args, sharded_model_params
+    )
+    gathered_batch_embeddings: BatchEmbeddings = gather_shards(sharded_batch_embeddings)
+    gathered_batch_tokens: TokenBatch = gather_shards(batch_tokens)
+
+    margins = get_margins(gathered_batch_embeddings)
+    num_neg = margins.shape[0]
+    num_anc = margins.shape[1]
+
+    neg_indices_repeated, anc_indices_repeated = _get_neg_anc_indices(num_neg, num_anc)
+
+    sorted_margins, neg_indices_sorted = jax.lax.sort_key_val(
+        margins.flatten(), neg_indices_repeated.flatten()
+    )
+    sorted_margins, anc_indices_sorted = jax.lax.sort_key_val(
+        margins.flatten(), anc_indices_repeated.flatten()
+    )
+
+    num_train_triplets = num_anc
+    neg_indices_selected = neg_indices_sorted[:num_train_triplets]
+    anc_indices_selected = anc_indices_sorted[:num_train_triplets]
+    triplet_margins_selected = sorted_margins[:num_train_triplets]
+
+    output = FilteredTokenBatch(
+        anchor_tokens=array_index_tokenizer_output(
+            gathered_batch_tokens.anchor_tokens, anc_indices_selected
+        ),
+        positive_tokens=array_index_tokenizer_output(
+            gathered_batch_tokens.positive_tokens, anc_indices_selected
+        ),
+        negative_tokens=array_index_tokenizer_output(
+            gathered_batch_tokens.negative_tokens, neg_indices_selected
+        ),
+        triplet_margin=triplet_margins_selected,
+    )
+
+    return shard(output)

@@ -26,6 +26,7 @@ class ModelConfig:
     pooling_strategy: PoolingStrategy = field(
         default=PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
     )
+    triplet_margin_threshold: float = field(default=1e-3)
 
 
 @dataclass
