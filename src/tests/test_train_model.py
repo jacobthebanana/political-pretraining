@@ -198,30 +198,22 @@ class MiningDistanceCalculations(unittest.TestCase):
         self.eval_batch_size = 7  # neg batch size
         self.embedding_dim = 11
         self.placeholder_value = 5
-        self.placeholder_value_alt = -7
 
         self.nonzero_distance = (
             self.embedding_dim * self.placeholder_value * self.placeholder_value
         )
-        self.nonzero_distance_alt = (
-            self.embedding_dim * self.placeholder_value_alt * self.placeholder_value_alt
-        )
 
         # The output should be zero everywhere except along row 1 or column 0,
         # but zero at (1, 0)
-        anc_embeddings = (
-            jnp.zeros((self.train_batch_size, self.embedding_dim))
-            .at[0, :]
-            .set(self.placeholder_value)
-        )
+        anc_embeddings = jnp.zeros((self.train_batch_size, self.embedding_dim))
         pos_embeddings = (
             jnp.zeros((self.train_batch_size, self.embedding_dim))
-            .at[-1, :]
-            .set(-self.placeholder_value * 2)
+            .at[1, :]
+            .set(self.placeholder_value * 2)
         )
         neg_embeddings = (
             jnp.zeros((self.eval_batch_size, self.embedding_dim))
-            .at[1, :]
+            .at[6, :]
             .set(self.placeholder_value)
         )
 
@@ -235,24 +227,35 @@ class MiningDistanceCalculations(unittest.TestCase):
         distances = get_anc_neg_distance(self.batch_embeddings)
         chex.assert_shape(distances, (self.eval_batch_size, self.train_batch_size))
 
-        # Both anc and neg are zero.
-        self.assertTrue(jnp.all(distances[0, 1:] == 0))
-        self.assertTrue(jnp.all(distances[2:, 1:] == 0))
-        # Both anc and neg are non-zero.
-        self.assertTrue(jnp.all(distances[1, 0] == 0))
-        # anc is non-zero while neg is zero.
-        self.assertTrue(jnp.all(distances[0, 0] == self.nonzero_distance))
-        self.assertTrue(jnp.all(distances[2:, 0] == self.nonzero_distance))
-        # anc is zero while neg is non-zero.
-        self.assertTrue(jnp.all(distances[1, 1:] == self.nonzero_distance))
+        for j in range(self.eval_batch_size):  # neg index
+            for k in range(self.train_batch_size):  # anc index
+                distance = distances[j, k]
+
+                if j == 6:
+                    self.assertEqual(distance, self.nonzero_distance)
+                else:
+                    self.assertEqual(distance, 0)
 
     def test_anc_pos_neg_margin_output(self):
-        # TODO: refine this test case.
+        # a: anchor, n: negative, p: positive.
+        # margin = d(a - n) - d(a - p)
         margins = get_margins(self.batch_embeddings)
 
-        # anc, neg, and pos are all zero.
-        self.assertTrue(jnp.all(margins[0, 0:-1] == 0))
-        self.assertTrue(jnp.all(margins[2:, 0:-1] == 0))
+        for j in range(self.eval_batch_size):  # neg index
+            for k in range(self.train_batch_size):  # anc index
+                margin = margins[j, k]
 
-        # anc and neg are zero, but pos is non-zero.
-        self.assertTrue(jnp.all(margins[1, 0] == -self.nonzero_distance))
+                # d(a - p) > d(a - n) whenever a_1 is chosen.
+                # d(a - p) > d(a - n) at n_6 and a_1.
+                if k == 1 and (j in range(6)):
+                    self.assertEqual(
+                        margin,
+                        -self.nonzero_distance * 2 * 2,
+                        (j, k),
+                    )
+                elif k == 1 and (j == 6):
+                    self.assertEqual(margin, -self.nonzero_distance * 3, (j, k))
+                elif j == 6:
+                    self.assertEqual(margin, self.nonzero_distance, (j, k))
+                else:
+                    self.assertEqual(margin, 0, (j, k))
