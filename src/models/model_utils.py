@@ -5,9 +5,16 @@ import numpy as np
 from flax.training.common_utils import shard
 import jax
 import chex
+import optax
 import jax.numpy as jnp
 from transformers.modeling_flax_outputs import FlaxBaseModelOutputWithPooling
-from ..config import BatchInfoKeys, BatchTokenKeys, ModelConfig, PoolingStrategy
+from ..config import (
+    BatchInfoKeys,
+    BatchTokenKeys,
+    MetricKeys,
+    ModelConfig,
+    PoolingStrategy,
+)
 
 Array = jax.numpy.ndarray
 
@@ -16,8 +23,8 @@ TripletEligibilityMask = jax.numpy.ndarray
 Embeddings = jax.numpy.ndarray
 
 TokenizerOutput = Dict[BatchTokenKeys, Array]
-ModelParams = Dict
-ShardedModelParams = Dict
+ModelParams = optax.Params
+ReplicatedModelParams = optax.Params
 
 
 class Batch(NamedTuple):
@@ -37,6 +44,20 @@ class BatchWithEmbeddings(NamedTuple):
     info: Dict[BatchInfoKeys, str]
     tokens: Dict[BatchTokenKeys, Array]
     embeddings: Array
+
+
+class ShardedTrainStepOutput(NamedTuple):
+    """
+    Output of the training step,
+    with metrics, updated model params, and updated optimizer state.
+    """
+
+    metrics: Dict[MetricKeys, float]
+    model_params: ModelParams
+    optimizer_state: optax.OptState
+
+
+TrainStepOutput = ShardedTrainStepOutput
 
 
 @dataclass
@@ -110,6 +131,13 @@ class FilteredTokenBatch(NamedTuple):
     negative_tokens: TokenizerOutput
 
     triplet_margin: Array
+
+    def to_token_batch(self) -> TokenBatch:
+        return TokenBatch(
+            anchor_tokens=self.anchor_tokens,
+            positive_tokens=self.positive_tokens,
+            negative_tokens=self.negative_tokens,
+        )
 
 
 class ShardedBatchEmbeddings(NamedTuple):

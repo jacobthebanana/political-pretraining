@@ -3,8 +3,10 @@ Functions required for the training pipeline, including dataloaders.
 """
 from typing import Iterator, Tuple, Dict, Callable
 import jax
+import chex
 from jax import numpy as jnp
 from flax.training.common_utils import shard
+import optax
 import numpy as np
 from datasets.arrow_dataset import Dataset
 from transformers import (
@@ -31,12 +33,14 @@ from .model_utils import (
     Embeddings,
     reshape_batch,
     get_pooling_fn,
-    ShardedModelParams,
+    ReplicatedModelParams,
     ModelParams,
     squared_l2_distance,
     ShardedFilteredTokenBatch,
     FilteredTokenBatch,
     array_index_tokenizer_output,
+    TrainStepOutput,
+    ShardedTrainStepOutput,
 )
 from ..config import PipelineConfig, ModelConfig, UserID, LookupByUID
 
@@ -136,7 +140,7 @@ def _embed_mining_batch_single_shard(
     def apply_model(
         tokens: TokenizerOutput,
     ) -> FlaxBaseModelOutputWithPooling:
-        outputs = model(**tokens, params=model_params)
+        outputs = model(**tokens, params=model_params)  # type: ignore
         return outputs  # type: ignore
 
     outputs = map(apply_model, token_batch)
@@ -148,7 +152,7 @@ def _embed_mining_batch_single_shard(
 
 
 _embed_mining_batch: Callable[
-    [ShardedTokenBatch, FlaxRobertaModel, ModelConfig, ShardedModelParams],
+    [ShardedTokenBatch, FlaxRobertaModel, ModelConfig, ReplicatedModelParams],
     ShardedBatchEmbeddings,
 ] = jax.pmap(_embed_mining_batch_single_shard, static_broadcasted_argnums=(1, 2))
 
@@ -278,7 +282,7 @@ def get_top_triplet_pairs(
     mining_batch: ShardedBatchForMining,
     model: FlaxRobertaModel,
     model_args: ModelConfig,
-    sharded_model_params: ShardedModelParams,
+    sharded_model_params: ReplicatedModelParams,
 ) -> FilteredTokenBatch:
     """
     Given a mining batch of tokens with n_anc examples of n_anc,
@@ -339,3 +343,112 @@ def get_top_triplet_pairs(
     )
 
     return shard(output)
+
+
+def _loss_fn_single_shard(
+    filtered_batch: FilteredTokenBatch,
+    model: FlaxRobertaModel,
+    model_args: ModelConfig,
+    model_params: ModelParams,
+) -> float:
+    """
+    Differentiable loss function.
+    """
+    batch_embeddings = _embed_mining_batch_single_shard(
+        filtered_batch.to_token_batch(), model, model_args, model_params
+    )
+    loss_value = get_triplet_loss(batch_embeddings, model_args)
+    return loss_value
+
+
+_grad_fn_single_shard: Callable[
+    [FilteredTokenBatch, FlaxRobertaModel, ModelConfig, ModelParams],
+    Tuple[float, ModelParams],
+] = jax.value_and_grad(_loss_fn_single_shard, argnums=3)
+
+
+def _train_step_single_shard(
+    filtered_batch: FilteredTokenBatch,
+    model: FlaxRobertaModel,
+    model_args: ModelConfig,
+    model_params: ModelParams,
+    optimizer: optax.GradientTransformation,
+    optimizer_state: optax.OptState,
+) -> TrainStepOutput:
+    """
+    Given a filtered batch of triplet examples,
+    compute gradients using triplet loss and
+    update model gradients with optimizer.
+
+    Args:
+     filtered_batch: from `get_top_triplet_pairs`. anc, pos, and neg
+      should be of equal length.
+     model: HuggingFace model with pooling layer on top of [CLS].
+     model_args: Specifies optimizer params.
+     model_params: original (non-sharded)
+
+    Returns:
+     TrainStepOutput, with metrics and new model params.
+    """
+
+    training_loss, params_grad = _grad_fn_single_shard(
+        filtered_batch, model, model_args, model_params
+    )
+    training_loss_pmean = jax.lax.pmean(training_loss, axis_name="data")
+    params_grad_pmean = jax.lax.pmean(params_grad, axis_name="data")
+
+    param_updates, updated_optimizer_state = optimizer.update(
+        params_grad_pmean, optimizer_state, model_params
+    )
+    updated_model_params = optax.apply_updates(model_params, param_updates)
+
+    return TrainStepOutput(
+        metrics={"training_loss": training_loss_pmean},
+        model_params=updated_model_params,
+        optimizer_state=updated_optimizer_state,
+    )
+
+
+_train_step: Callable[
+    [
+        FilteredTokenBatch,
+        FlaxRobertaModel,  # static
+        ModelConfig,  # static
+        ReplicatedModelParams,
+        optax.GradientTransformation,  # static
+        optax.OptState,
+    ],
+    TrainStepOutput,
+] = jax.pmap(
+    _train_step_single_shard, axis_name="data", static_broadcasted_argnums=(1, 2, 4)
+)
+
+
+def get_triplet_loss(embeddings: BatchEmbeddings, model_args: ModelConfig) -> float:
+    """
+    Implementation of the triplet loss. Note that the goal of pretraining
+    here is to maximize the distance between embeddings of examples
+    from different classes, not to compress classes
+    into single points. Hence, the loss is set to 0 as long as
+    d(anc - pos) < threshold.
+
+    Args:
+     batch_embeddings: A batch of triplet embeddings (anc, pos, neg).
+     model_args: Specifies the triplet loss threshold.
+
+    Returns:
+     max(0, d(anc - pos) - d(anc - neg) - threshold) (lower is better.)
+    """
+    chex.assert_equal_shape(embeddings)
+    d_anc_pos = squared_l2_distance(
+        embeddings.anchor_embeddings, embeddings.positive_embeddings
+    )
+    d_anc_neg = squared_l2_distance(
+        embeddings.anchor_embeddings, embeddings.negative_embeddings
+    )
+
+    loss_without_clipping = jnp.mean(d_anc_pos - d_anc_neg)
+    # return loss_without_clipping
+    return jnp.where(
+        loss_without_clipping > model_args.triplet_threshold, loss_without_clipping, 0
+    )

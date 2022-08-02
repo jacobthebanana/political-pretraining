@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 BatchTokenKeys = Literal["input_ids", "attention_mask"]
 BatchInfoKeys = Literal["uid", "tid"]
+MetricKeys = Literal["training_loss"]
 UserID = str
 
 LookupByUID = Dict[UserID, Tuple[int, ...]]
@@ -26,7 +27,7 @@ class ModelConfig:
     pooling_strategy: PoolingStrategy = field(
         default=PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
     )
-    triplet_margin_threshold: float = field(default=1e-3)
+    triplet_threshold: float = field(default=1e-3)
 
 
 @dataclass
