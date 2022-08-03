@@ -94,6 +94,7 @@ run_model_train_tests:
 preprocess_test_dataset:
 	head -n 302 data/raw/tweets.csv > data/testing/raw/tweets.csv
 	python3 -m src.data.make_dataset \
+		--base_model_name=${unittest_base_model_name} \
 		--source_path="data/testing/raw/tweets.csv" \
 		--processed_dataset_path="data/testing/processed/tweets" \
 		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" 

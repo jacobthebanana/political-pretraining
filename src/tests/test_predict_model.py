@@ -1,4 +1,5 @@
 import unittest
+from os import environ
 
 import json
 import jax
@@ -28,7 +29,13 @@ num_devices = jax.device_count()
 eval_per_device_batch_size = 2
 effective_batch_size = num_devices * eval_per_device_batch_size
 
-model_args = ModelConfig()
+
+base_model_name = environ.get("unittest_base_model_name")
+if base_model_name:
+    model_args = ModelConfig(base_model_name=base_model_name)
+else:
+    model_args = ModelConfig()
+
 pipeline_args = PipelineConfig(eval_per_device_batch_size=eval_per_device_batch_size)
 
 
@@ -77,7 +84,7 @@ class GetDataLoaderFromProcessedDataset(unittest.TestCase):
 
 class RunInferenceOnTextBatch(unittest.TestCase):
     def setUp(self):
-        self.preprocessed_dataset: Dataset = load_from_disk(test_processed_dataset_path) # type: ignore
+        self.preprocessed_dataset: Dataset = load_from_disk(test_processed_dataset_path)  # type: ignore
 
         self.dataloader = get_dataloader(self.preprocessed_dataset, pipeline_args)  # type: ignore
         self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(

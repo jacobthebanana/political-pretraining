@@ -60,7 +60,11 @@ pipeline_args = PipelineConfig(
     train_per_device_batch_size=2, eval_per_device_batch_size=7
 )
 
-model_args = ModelConfig(triplet_threshold=1e2)
+base_model_name = environ.get("unittest_base_model_name")
+if base_model_name:
+    model_args = ModelConfig(base_model_name=base_model_name)
+else:
+    model_args = ModelConfig()
 
 
 class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
