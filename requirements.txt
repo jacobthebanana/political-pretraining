@@ -3,3 +3,4 @@ optax
 datasets
 transformers
 typing_extensions
+torch[cpu]
