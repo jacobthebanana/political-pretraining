@@ -88,10 +88,10 @@ class RunInferenceOnTextBatch(unittest.TestCase):
 
         self.dataloader = get_dataloader(self.preprocessed_dataset, pipeline_args)  # type: ignore
         self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
         self.hf_model_config: RobertaConfig = AutoConfig.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
 
     def test_run_batch_inference_shape(self):
@@ -137,7 +137,7 @@ class RunInferenceOnTextBatch(unittest.TestCase):
 class ComputeUserEmbeddingTallyAndMean(unittest.TestCase):
     def setUp(self):
         self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
 
         preprocessed_dataset: Dataset = load_from_disk(test_processed_dataset_path)  # type: ignore
@@ -154,7 +154,7 @@ class ComputeUserEmbeddingTallyAndMean(unittest.TestCase):
         )
 
         self.hf_model_config: RobertaConfig = AutoConfig.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
 
         self.user_embedding_mean = _compute_mean_embeddings(self.user_embedding_tally)
