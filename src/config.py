@@ -58,3 +58,4 @@ class PipelineConfig:
     train_per_device_batch_size: int = field(default=16)
     train_prng_key: int = field(default=0)
     num_epochs: int = field(default=1)
+    save_every_num_batches: int = field(default=1000)

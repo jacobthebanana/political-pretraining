@@ -516,11 +516,13 @@ def main():
             jax.random.PRNGKey(pipeline_args.train_prng_key),
             pipeline_args,
         )
-        for mining_batch in tqdm(
-            dataloader,
-            total=num_batches,
-            desc=f"Epoch ({epoch_index+1}/{pipeline_args.num_epochs})",
-            ncols=80,
+        for batch_index, mining_batch in enumerate(
+            tqdm(
+                dataloader,
+                total=num_batches,
+                desc=f"Epoch ({epoch_index+1}/{pipeline_args.num_epochs})",
+                ncols=80,
+            )
         ):
             filtered_token_batch = get_top_triplet_pairs(
                 mining_batch, model, model_args, replicated_model_params
@@ -541,9 +543,10 @@ def main():
             training_metrics = unreplicate(train_step_output.metrics)
             wandb.log(training_metrics)
 
-        model_params = unreplicate(replicated_model_params)
-        model_params = jax.device_get(model_params)
-        model.save_pretrained(data_args.model_output_path, params=model_params)
+        if (batch_index - 1) % pipeline_args.save_every_num_batches == 0:
+            model_params = unreplicate(replicated_model_params)
+            model_params = jax.device_get(model_params)
+            model.save_pretrained(data_args.model_output_path, params=model_params)
 
 
 if __name__ == "__main__":
