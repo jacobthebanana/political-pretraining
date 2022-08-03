@@ -68,6 +68,7 @@ train:
 		--processed_dataset_path="data/processed/tweets" \
 		--processed_lookup_by_uid_json_path="data/processed/tweets/lookup_by_uid.json" \
 		--base_model_name=${base_model_name} \
+		--triplet_threshold=${triplet_threshold} \
 		--train_per_device_batch_size=${train_per_device_batch_size} \
 		--eval_per_device_batch_size=${eval_per_device_batch_size} \
 		--pooling_strategy=${pooling_strategy} \
