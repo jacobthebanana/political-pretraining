@@ -2,12 +2,16 @@
 Functions required for the training pipeline, including dataloaders.
 """
 from typing import Iterator, Tuple, Dict, Callable
+import json
+
 import jax
 import chex
 from jax import numpy as jnp
 from flax.training.common_utils import shard
+from flax.jax_utils import replicate, unreplicate
 import optax
 import numpy as np
+from datasets import load_from_disk
 from datasets.arrow_dataset import Dataset
 from transformers import (
     FlaxAutoModel,
@@ -15,6 +19,9 @@ from transformers import (
     HfArgumentParser,
 )
 from transformers.modeling_flax_outputs import FlaxBaseModelOutputWithPooling
+from tqdm.auto import tqdm
+import datetime
+import wandb
 
 from .model_utils import (
     Batch,
@@ -42,7 +49,7 @@ from .model_utils import (
     TrainStepOutput,
     ShardedTrainStepOutput,
 )
-from ..config import PipelineConfig, ModelConfig, UserID, LookupByUID
+from ..config import DataConfig, PipelineConfig, ModelConfig, UserID, LookupByUID
 
 Array = jnp.ndarray
 PRNGKey = jax.random.KeyArray
@@ -456,3 +463,88 @@ def get_triplet_loss(embeddings: BatchEmbeddings, model_args: ModelConfig) -> fl
         return jnp.where(loss_with_threshold > 0, loss_with_threshold, 0)
     else:
         return loss_without_threshold
+
+
+def main():
+    parser = HfArgumentParser((ModelConfig, DataConfig, PipelineConfig))
+    model_args, data_args, pipeline_args = parser.parse_args_into_dataclasses()
+    model_args: ModelConfig
+    data_args: DataConfig
+    pipeline_args: PipelineConfig
+
+    processed_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
+    processed_dataset: Dataset
+
+    wandb.init(
+        project="political-triplet-tweets",
+        entity="jacobthebanana",
+        name=datetime.datetime.now().isoformat()[:-7],
+    )
+    wandb.run.log_code(".")  # type: ignore
+    wandb.config.update(
+        {
+            "model_args": model_args.__dict__,
+            "data_args": data_args.__dict__,
+            "pipeline_args": pipeline_args.__dict__,
+        }
+    )
+
+    with open(
+        data_args.processed_lookup_by_uid_json_path, "r"
+    ) as lookup_by_uid_json_file:
+        lookup_by_uid: LookupByUID = json.load(lookup_by_uid_json_file)
+
+    model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
+        model_args.base_model_name, from_pt=True
+    )
+    replicated_model_params = replicate(model.params)
+    optimizer = optax.adamw(model_args.learning_rate)
+    optimizer_state = optimizer.init(model.params)
+    replicated_optimizer_state = replicate(optimizer_state)
+
+    num_devices = jax.device_count()
+    num_batches = (
+        len(processed_dataset)
+        // (pipeline_args.train_per_device_batch_size * num_devices)
+        + 1
+    )
+
+    for epoch_index in range(pipeline_args.num_epochs):
+        dataloader = get_train_dataloader(
+            processed_dataset,
+            lookup_by_uid,
+            jax.random.PRNGKey(pipeline_args.train_prng_key),
+            pipeline_args,
+        )
+        for mining_batch in tqdm(
+            dataloader,
+            total=num_batches,
+            desc=f"Epoch ({epoch_index+1}/{pipeline_args.num_epochs})",
+            ncols=80,
+        ):
+            filtered_token_batch = get_top_triplet_pairs(
+                mining_batch, model, model_args, replicated_model_params
+            )
+
+            train_step_output = _train_step(
+                filtered_token_batch,
+                model,
+                model_args,
+                replicated_model_params,
+                optimizer,
+                replicated_optimizer_state,
+            )
+
+            replicated_model_params = train_step_output.model_params
+            replicated_optimizer_state = train_step_output.optimizer_state
+
+            training_metrics = unreplicate(train_step_output.metrics)
+            wandb.log(training_metrics)
+
+        model_params = unreplicate(replicated_model_params)
+        model_params = jax.device_get(model_params)
+        model.save_pretrained(data_args.model_output_path, params=model_params)
+
+
+if __name__ == "__main__":
+    main()

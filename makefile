@@ -63,6 +63,17 @@ show_dataset_stats:
 	python3 -m src.data.print_dataset_stats \
 		--processed_dataset_path="data/processed/tweets"
 
+train:
+	python3 -m src.models.train_model \
+		--processed_dataset_path="data/processed/tweets" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets/lookup_by_uid.json" \
+		--base_model_name=${base_model_name} \
+		--train_per_device_batch_size=${train_per_device_batch_size} \
+		--eval_per_device_batch_size=${eval_per_device_batch_size} \
+		--pooling_strategy=${pooling_strategy} \
+		--model_output_path=${model_output_path} \
+		--num_epochs=${num_epochs}
+
 # Generate average user embeddings on the given dataset.
 embed:
 	python3 -m src.models.predict_model \

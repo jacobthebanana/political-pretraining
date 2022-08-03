@@ -28,6 +28,7 @@ class ModelConfig:
         default=PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
     )
     triplet_threshold: Optional[float] = field(default=1e2)
+    learning_rate: float = field(default=0.001)
 
 
 @dataclass
@@ -38,6 +39,7 @@ class DataConfig:
     processed_lookup_by_uid_json_path: str = field(
         default="data/processed/tweets/lookup_by_uid.json"
     )
+    model_output_path: str = field(default="data/artifacts/saved_model")
     output_embeddings_json_path: str = field(default="data/artifacts/embeddings.json")
     num_procs: int = field(default=32)
     # Keep only the last 1/shard_denominator of data.
@@ -54,3 +56,5 @@ class PipelineConfig:
     eval_per_device_batch_size: int = field(default=128)
     # Batch size for calculating gradients
     train_per_device_batch_size: int = field(default=16)
+    train_prng_key: int = field(default=0)
+    num_epochs: int = field(default=1)
