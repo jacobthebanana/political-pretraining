@@ -429,15 +429,17 @@ def get_triplet_loss(embeddings: BatchEmbeddings, model_args: ModelConfig) -> fl
     Implementation of the triplet loss. Note that the goal of pretraining
     here is to maximize the distance between embeddings of examples
     from different classes, not to compress classes
-    into single points. Hence, the loss is set to 0 as long as
-    d(anc - pos) < threshold.
+    into single points. At the same time, it is necessary to discourage
+    the model from degenerating (e.g., setting all output to 0).
+    Hence, the loss is set to 0 as long as
+    d(anc, neg) > d(anc, pos) + threshold.
 
     Args:
      batch_embeddings: A batch of triplet embeddings (anc, pos, neg).
      model_args: Specifies the triplet loss threshold.
 
     Returns:
-     max(0, d(anc - pos) - d(anc - neg) - threshold) (lower is better.)
+     max(0, d(anc - pos) + threshold - d(anc - neg)) (lower is better.)
     """
     chex.assert_equal_shape(embeddings)
     d_anc_pos = squared_l2_distance(
@@ -447,8 +449,10 @@ def get_triplet_loss(embeddings: BatchEmbeddings, model_args: ModelConfig) -> fl
         embeddings.anchor_embeddings, embeddings.negative_embeddings
     )
 
-    loss_without_clipping = jnp.mean(d_anc_pos - d_anc_neg)
-    # return loss_without_clipping
-    return jnp.where(
-        loss_without_clipping > model_args.triplet_threshold, loss_without_clipping, 0
-    )
+    loss_without_threshold = jnp.mean(d_anc_pos - d_anc_neg)
+
+    if model_args.triplet_threshold is not None:
+        loss_with_threshold = loss_without_threshold + model_args.triplet_threshold
+        return jnp.where(loss_with_threshold > 0, loss_with_threshold, 0)
+    else:
+        return loss_without_threshold

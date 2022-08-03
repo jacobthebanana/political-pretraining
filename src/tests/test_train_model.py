@@ -2,6 +2,7 @@ import unittest
 from typing import Dict
 import json
 from collections import Counter
+from os import environ
 
 import jax
 import chex
@@ -59,7 +60,7 @@ pipeline_args = PipelineConfig(
     train_per_device_batch_size=2, eval_per_device_batch_size=7
 )
 
-model_args = ModelConfig(triplet_threshold=-1e3)
+model_args = ModelConfig(triplet_threshold=1e2)
 
 
 class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
@@ -150,7 +151,7 @@ class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
 class EmbedBatchForTripletMining(unittest.TestCase):
     def setUp(self):
         self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
         self.preprocessed_dataset: Dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
         self.num_batches = (
@@ -165,7 +166,7 @@ class EmbedBatchForTripletMining(unittest.TestCase):
             self.lookup_by_uid: LookupByUID = json.load(lookup_by_uid_json_file)
 
         self.hf_model_config: RobertaConfig = AutoConfig.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
 
     def test_embed_shape(self):
@@ -303,7 +304,7 @@ class GatherShards(unittest.TestCase):
 class RankMiningTriplets(unittest.TestCase):
     def setUp(self):
         self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
         self.preprocessed_dataset: Dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
         self.num_batches = (
@@ -318,7 +319,7 @@ class RankMiningTriplets(unittest.TestCase):
             self.lookup_by_uid: LookupByUID = json.load(lookup_by_uid_json_file)
 
         self.hf_model_config: RobertaConfig = AutoConfig.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
 
     def test_ranking_shape(self):
@@ -409,7 +410,9 @@ class GetTripletLoss(unittest.TestCase):
             jnp.sum(jnp.square(anc_example - neg_example), axis=1), axis=0
         )
 
-        self.assertEqual(loss_value, d_anc_pos - d_anc_neg)
+        self.assertEqual(
+            loss_value, d_anc_pos - d_anc_neg + model_args.triplet_threshold
+        )
 
 
 class StepTraining(unittest.TestCase):
@@ -419,7 +422,7 @@ class StepTraining(unittest.TestCase):
 
     def setUp(self):
         self.model: FlaxRobertaModel = FlaxAutoModel.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
         self.preprocessed_dataset: Dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
         self.num_batches = (
@@ -434,41 +437,49 @@ class StepTraining(unittest.TestCase):
             self.lookup_by_uid: LookupByUID = json.load(lookup_by_uid_json_file)
 
         self.hf_model_config: RobertaConfig = AutoConfig.from_pretrained(
-            model_args.base_model_name
+            model_args.base_model_name, from_pt=True
         )
 
     def test_loss_reduction(self):
-        dataloader = get_train_dataloader(
-            self.preprocessed_dataset,
-            self.lookup_by_uid,
-            jax.random.PRNGKey(0),
-            pipeline_args,
-        )
-
         replicated_model_params = replicate(self.model.params)
         optimizer = optax.adamw(0.001)
         optimizer_state = optimizer.init(self.model.params)
         replicated_optimizer_state = replicate(optimizer_state)
 
-        # Note that the dataloader shards data by default.
-        for mining_batch in tqdm(
-            dataloader, total=self.num_batches, desc="Unit testing", ncols=80
-        ):
-            filtered_token_batch = get_top_triplet_pairs(
-                mining_batch, self.model, model_args, replicated_model_params
-            )
-            print(filtered_token_batch.triplet_margin)
-
-            train_step_output = _train_step(
-                filtered_token_batch,
-                self.model,
-                model_args,
-                replicated_model_params,
-                optimizer,
-                replicated_optimizer_state,
+        train_losses = []
+        for n_epoch in range(5):  # test epoch
+            # Note that the dataloader shards data by default.
+            dataloader = get_train_dataloader(
+                self.preprocessed_dataset,
+                self.lookup_by_uid,
+                jax.random.PRNGKey(0),
+                pipeline_args,
             )
 
-            replicated_model_params = train_step_output.model_params
-            replicated_optimizer_state = train_step_output.optimizer_state
+            epoch_train_losses = []
+            for mining_batch in tqdm(
+                dataloader, total=self.num_batches, desc="Unit testing", ncols=80
+            ):
+                filtered_token_batch = get_top_triplet_pairs(
+                    mining_batch, self.model, model_args, replicated_model_params
+                )
 
-            print(train_step_output.metrics)
+                train_step_output = _train_step(
+                    filtered_token_batch,
+                    self.model,
+                    model_args,
+                    replicated_model_params,
+                    optimizer,
+                    replicated_optimizer_state,
+                )
+
+                replicated_model_params = train_step_output.model_params
+                replicated_optimizer_state = train_step_output.optimizer_state
+
+                training_loss = train_step_output.metrics["training_loss"][0]
+                epoch_train_losses.append(training_loss)
+
+            train_losses.append(sum(epoch_train_losses) / len(epoch_train_losses))
+
+        print("Train losses (mean per epoch):", train_losses)
+        self.assertLessEqual(train_losses[-1], train_losses[0])

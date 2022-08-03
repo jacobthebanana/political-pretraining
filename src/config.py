@@ -1,4 +1,4 @@
-from typing import Any, Container, Dict, Tuple
+from typing import Any, Container, Dict, Tuple, Optional
 from typing_extensions import Literal
 from enum import Enum
 
@@ -27,7 +27,7 @@ class ModelConfig:
     pooling_strategy: PoolingStrategy = field(
         default=PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
     )
-    triplet_threshold: float = field(default=1e-3)
+    triplet_threshold: Optional[float] = field(default=1e2)
 
 
 @dataclass

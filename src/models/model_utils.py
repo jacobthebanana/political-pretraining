@@ -52,7 +52,7 @@ class ShardedTrainStepOutput(NamedTuple):
     with metrics, updated model params, and updated optimizer state.
     """
 
-    metrics: Dict[MetricKeys, float]
+    metrics: Dict[MetricKeys, Array]
     model_params: ModelParams
     optimizer_state: optax.OptState
 
