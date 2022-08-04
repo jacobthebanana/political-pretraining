@@ -449,6 +449,8 @@ def get_triplet_loss(embeddings: BatchEmbeddings, model_args: ModelConfig) -> fl
      max(0, d(anc - pos) + threshold - d(anc - neg)) (lower is better.)
     """
     chex.assert_equal_shape(embeddings)
+
+    #
     d_anc_pos = squared_l2_distance(
         embeddings.anchor_embeddings, embeddings.positive_embeddings
     )
@@ -456,13 +458,10 @@ def get_triplet_loss(embeddings: BatchEmbeddings, model_args: ModelConfig) -> fl
         embeddings.anchor_embeddings, embeddings.negative_embeddings
     )
 
-    loss_without_threshold = jnp.mean(d_anc_pos - d_anc_neg)
-
-    if model_args.triplet_threshold is not None:
-        loss_with_threshold = loss_without_threshold + model_args.triplet_threshold
-        return jnp.where(loss_with_threshold > 0, loss_with_threshold, 0)
-    else:
-        return loss_without_threshold
+    # Add threshold before taking the batch-wise mean. The mean should be the last step.
+    loss = d_anc_pos - d_anc_neg + model_args.triplet_threshold
+    loss = jnp.where(loss > 0, loss, 0)
+    return jnp.mean(loss)
 
 
 def main():
