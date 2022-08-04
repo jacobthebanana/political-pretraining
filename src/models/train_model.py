@@ -545,7 +545,13 @@ def main():
         if (batch_index - 1) % pipeline_args.save_every_num_batches == 0:
             model_params = unreplicate(replicated_model_params)
             model_params = jax.device_get(model_params)
-            model.save_pretrained(data_args.model_output_path, params=model_params)
+
+            if wandb.run is not None:
+                model_name = data_args.model_output_path + wandb.run.id
+            else:
+                model_name = data_args.model_output_path
+
+            model.save_pretrained(model_name, params=model_params)
 
 
 if __name__ == "__main__":

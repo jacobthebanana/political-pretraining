@@ -73,6 +73,7 @@ train:
 		--eval_per_device_batch_size=${eval_per_device_batch_size} \
 		--pooling_strategy=${pooling_strategy} \
 		--model_output_path=${model_output_path} \
+		--save_every_num_batches=${save_every_num_batches} \
 		--num_epochs=${num_epochs}
 
 # Generate average user embeddings on the given dataset.
