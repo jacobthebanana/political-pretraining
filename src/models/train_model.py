@@ -3,6 +3,7 @@ Functions required for the training pipeline, including dataloaders.
 """
 from typing import Iterator, Tuple, Dict, Callable
 import json
+from socket import gethostname
 
 import jax
 import chex
@@ -477,7 +478,7 @@ def main():
     wandb.init(
         project="political-triplet-tweets",
         entity="jacobthebanana",
-        name=datetime.datetime.now().isoformat()[:-7],
+        name=datetime.datetime.now().isoformat() + "-" + gethostname(),
     )
     wandb.run.log_code(".")  # type: ignore
     wandb.config.update(
