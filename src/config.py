@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 BatchTokenKeys = Literal["input_ids", "attention_mask"]
 BatchInfoKeys = Literal["uid", "tid"]
-MetricKeys = Literal["training_loss"]
+MetricKeys = Literal["training_loss", "training_loss_net"]
 UserID = str
 
 LookupByUID = Dict[UserID, Tuple[int, ...]]

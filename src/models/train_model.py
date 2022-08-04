@@ -411,7 +411,10 @@ def _train_step_single_shard(
     updated_model_params = optax.apply_updates(model_params, param_updates)
 
     return TrainStepOutput(
-        metrics={"training_loss": training_loss_pmean},
+        metrics={
+            "training_loss": training_loss_pmean,
+            "training_loss_net": training_loss_pmean - model_args.triplet_threshold,
+        },
         model_params=updated_model_params,
         optimizer_state=updated_optimizer_state,
     )
