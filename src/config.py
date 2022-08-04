@@ -20,6 +20,17 @@ class PoolingStrategy(Enum):
     WORD_EMBEDDING_MEAN = "word_embedding_mean"
 
 
+class ConcatenationDelimiter(Enum):
+    SPACE = "space"
+    NEWLINE = "newline"
+
+
+CONCATENATION_DELIMITER_MAP = {
+    ConcatenationDelimiter.SPACE: " ",
+    ConcatenationDelimiter.NEWLINE: "\n",
+}
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     base_model_name: str = field(default="roberta-base")
@@ -48,6 +59,10 @@ class DataConfig:
     enable_indexing: bool = field(default=True)
     # Whether to tokenize the dataset instead of loading the saved one.
     rerun_tokenization: bool = field(default=True)
+    per_user_concatenation: bool = field(default=False)
+    concatenation_delimiter: ConcatenationDelimiter = field(
+        default=ConcatenationDelimiter.NEWLINE
+    )
 
 
 @dataclass

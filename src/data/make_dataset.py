@@ -1,15 +1,28 @@
-from typing import Any, Container, Dict, List, Tuple, Iterable
+from typing import Any, Container, Dict, List, Tuple, Iterable, Union
 from collections import defaultdict
 import multiprocessing
 import json
 from dataclasses import dataclass
 
 import datasets
-from datasets import Dataset, load_dataset, load_from_disk, Value, Features
+from datasets import (
+    Dataset,
+    load_dataset,
+    load_from_disk,
+    concatenate_datasets,
+    Value,
+    Features,
+)
 from transformers import AutoTokenizer, HfArgumentParser
 from tqdm.auto import tqdm
 
-from ..config import ModelConfig, DataConfig, LookupByUID, UserID
+from ..config import (
+    ModelConfig,
+    DataConfig,
+    LookupByUID,
+    UserID,
+    CONCATENATION_DELIMITER_MAP,
+)
 
 Dataset = datasets.arrow_dataset.Dataset
 
@@ -18,6 +31,16 @@ Dataset = datasets.arrow_dataset.Dataset
 class _DATASET_SHARD_FOR_INDEXING:
     dataset_shard: datasets.arrow_dataset.Dataset
     offset: int
+    num_shards: int
+
+
+@dataclass
+class _LOOKUP_DICT_SHARD_FOR_CONCATENATION:
+    dataset: datasets.arrow_dataset.Dataset
+    lookup_shard: LookupByUID
+    model_args: ModelConfig
+    data_args: DataConfig
+    shard_index: int
     num_shards: int
 
 
@@ -63,6 +86,92 @@ def filter_hf_dataset_by_uid(
         return uid in uid_set
 
     return dataset.filter(filter_function, num_proc=data_args.num_procs)
+
+
+def _concatenate_by_uid_on_shard(
+    shard: _LOOKUP_DICT_SHARD_FOR_CONCATENATION,
+) -> Dataset:
+    tokenizer = AutoTokenizer.from_pretrained(shard.model_args.base_model_name)
+
+    output = {"uid": [], "text": []}
+    features = Features(
+        {
+            "uid": Value(dtype="string"),
+            "text": Value(dtype="string"),
+        }
+    )
+    for uid, indices in tqdm(
+        shard.lookup_shard.items(),
+        ncols=80,
+        total=len(shard.lookup_shard.keys()),
+        desc=f"Concatenating {shard.shard_index}/{shard.num_shards}",
+    ):
+        text_buffer = ""
+        texts: Iterable[Union[str, None]] = shard.dataset[indices]["text"]
+        for text in texts:
+            if text:
+                user_text = (
+                    text
+                    + CONCATENATION_DELIMITER_MAP[
+                        shard.data_args.concatenation_delimiter
+                    ]
+                )
+                new_length = len(tokenizer(text_buffer + user_text)["input_ids"])
+
+                if new_length >= shard.model_args.max_seq_length:
+                    output["uid"].append(uid)
+                    output["text"].append(text_buffer)
+                    text_buffer = ""
+                else:
+                    text_buffer += user_text
+
+    return Dataset.from_dict(output, features=features)
+
+
+def concatenate_by_uid(
+    dataset: Dataset,
+    lookup_by_uid: LookupByUID,
+    model_args: ModelConfig,
+    data_args: DataConfig,
+) -> Dataset:
+    """
+    Given a raw text dataset, concatenate sentences from each uid,
+    starting a new entry whenever the number of tokens in the batch
+    exceeds model_args.max_seq_length.
+
+    params:
+     dataset: raw HF dataset (with both `text` and `uid`)
+     lookup_by_uid: uid-to-index map. See `create_uid_lookup`.
+     model_args: specifies max_seq_length.
+     data_args: specifies
+    """
+    uids = list(lookup_by_uid.keys())
+    num_shards = data_args.num_procs
+    shards: List[_LOOKUP_DICT_SHARD_FOR_CONCATENATION] = []
+    shard_length: int = len(uids) // num_shards + 1
+
+    for shard_index in range(num_shards):
+        lower_index: int = shard_index * shard_length
+        upper_index: int = min(len(uids), lower_index + shard_length)
+        uids_in_shard = uids[lower_index:upper_index]
+        lookup_dict_shard: LookupByUID = {}
+        for uid in uids_in_shard:
+            lookup_dict_shard[uid] = lookup_by_uid[uid]
+
+        lookup_shard = _LOOKUP_DICT_SHARD_FOR_CONCATENATION(
+            dataset,
+            lookup_dict_shard,
+            model_args,
+            data_args,
+            shard_index=shard_index,
+            num_shards=num_shards,
+        )
+        shards.append(lookup_shard)
+
+    with multiprocessing.Pool(data_args.num_procs) as pool:
+        sharded_datasets: List[Dataset] = pool.map(_concatenate_by_uid_on_shard, shards)
+
+    return concatenate_datasets(sharded_datasets)
 
 
 def preprocess_and_tokenize_dataset(
@@ -192,9 +301,23 @@ def main():
 
     if data_args.rerun_tokenization:
         raw_dataset = create_raw_hf_dataset(data_args)
-        processed_dataset = preprocess_and_tokenize_dataset(
-            raw_dataset, model_args, data_args
-        )
+
+        if data_args.per_user_concatenation:
+            dataset_for_indexing = raw_dataset.remove_columns(
+                ["text", "input_ids", "attention_mask"]
+            )
+            lookup_by_uid = create_uid_lookup(dataset_for_indexing, data_args)
+            raw_dataset_concatenated = concatenate_by_uid(
+                raw_dataset, lookup_by_uid, model_args, data_args
+            )
+            processed_dataset = preprocess_and_tokenize_dataset(
+                raw_dataset_concatenated, model_args, data_args
+            )
+
+        else:
+            processed_dataset = preprocess_and_tokenize_dataset(
+                raw_dataset, model_args, data_args
+            )
         processed_dataset.save_to_disk(data_args.processed_dataset_path)
     else:
         processed_dataset: Dataset = load_from_disk(

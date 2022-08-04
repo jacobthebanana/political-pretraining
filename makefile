@@ -44,6 +44,8 @@ preprocess_csv:
 		--base_model_name=${base_model_name} \
 		--enable_indexing=${enable_indexing} \
 		--rerun_tokenization=${rerun_tokenization} \
+		--per_user_concatenation=${per_user_concatenation} \
+		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
 
 preprocess_json: 
@@ -57,6 +59,8 @@ preprocess_json:
 		--base_model_name=${base_model_name} \
 		--enable_indexing=${enable_indexing} \
 		--rerun_tokenization=${rerun_tokenization} \
+		--per_user_concatenation=${per_user_concatenation} \
+		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
 
 show_dataset_stats: 

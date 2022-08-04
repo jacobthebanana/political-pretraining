@@ -8,6 +8,10 @@ from ..data.make_dataset import (
     create_raw_hf_dataset,
     filter_hf_dataset_by_uid,
     preprocess_and_tokenize_dataset,
+    create_uid_lookup,
+    _concatenate_by_uid_on_shard,
+    concatenate_by_uid,
+    _LOOKUP_DICT_SHARD_FOR_CONCATENATION,
 )
 from ..config import ModelConfig, DataConfig
 
@@ -17,7 +21,7 @@ Dataset = datasets.arrow_dataset.Dataset
 test_tweet_json_path = "data/testing/raw/tweets.json"
 test_uid_set = set(["1180684225097289729", "20011085", "0"])
 
-model_args = ModelConfig()
+model_args = ModelConfig(max_seq_length=512)
 data_args = DataConfig(source_format="json", source_path=test_tweet_json_path)
 
 # Regression test: handle examples where text is None.
@@ -78,6 +82,32 @@ class FilterDatasetByUID(unittest.TestCase):
         self.assertEqual(len(self.filtered_dataset), 181)
         self.assertIn("1180684225097289729", self.filtered_dataset["uid"])
         self.assertNotIn("0", self.filtered_dataset["uid"])
+
+
+class ConcatenateByUID(unittest.TestCase):
+    def setUp(self):
+        self.dataset = create_raw_hf_dataset(data_args)
+        self.lookup_by_uid = create_uid_lookup(self.dataset, data_args)
+
+    def test_concatenate_by_uid_shard(self):
+        lookup_shard = _LOOKUP_DICT_SHARD_FOR_CONCATENATION(
+            dataset=self.dataset,
+            lookup_shard=self.lookup_by_uid,
+            model_args=model_args,
+            data_args=data_args,
+            shard_index=0,
+            num_shards=1,
+        )
+        dataset_output = _concatenate_by_uid_on_shard(lookup_shard)
+        for text in dataset_output["text"]:
+            self.assertLessEqual(len(text.split()), model_args.max_seq_length)
+
+    def test_concatenate_by_uid(self):
+        dataset_output = concatenate_by_uid(
+            self.dataset, self.lookup_by_uid, model_args, data_args
+        )
+        for text in dataset_output["text"]:
+            self.assertLessEqual(len(text.split()), model_args.max_seq_length)
 
 
 class PreprocessAndTokenizeDataset(unittest.TestCase):
