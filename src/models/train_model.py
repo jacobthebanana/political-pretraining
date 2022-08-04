@@ -551,7 +551,7 @@ def main():
                 model_params = jax.device_get(model_params)
 
                 if wandb.run is not None:
-                    model_name = data_args.model_output_path + wandb.run.id
+                    model_name = data_args.model_output_path + "-" + wandb.run.id
                 else:
                     model_name = data_args.model_output_path
 
