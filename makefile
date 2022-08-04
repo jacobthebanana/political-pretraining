@@ -37,8 +37,8 @@ preprocess_csv:
 	python3 -m src.data.make_dataset \
 		--source_format=csv \
 		--source_path="data/raw/tweets.csv" \
-		--processed_dataset_path="data/processed/tweets-${max_seq_length}" \
-		--processed_lookup_by_uid_json_path="data/processed/tweets-${max_seq_length}/lookup_by_uid.json" \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \
@@ -52,8 +52,8 @@ preprocess_json:
 	python3 -m src.data.make_dataset \
 		--source_format=json \
 		--source_path="data/raw/tweets.json" \
-		--processed_dataset_path="data/processed/tweets-${max_seq_length}" \
-		--processed_lookup_by_uid_json_path="data/processed/tweets-${max_seq_length}/lookup_by_uid.json" \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \
@@ -65,12 +65,12 @@ preprocess_json:
 
 show_dataset_stats: 
 	python3 -m src.data.print_dataset_stats \
-		--processed_dataset_path="data/processed/tweets-${max_seq_length}"
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}"
 
 train:
 	python3 -m src.models.train_model \
-		--processed_dataset_path="data/processed/tweets-${max_seq_length}" \
-		--processed_lookup_by_uid_json_path="data/processed/tweets-${max_seq_length}/lookup_by_uid.json" \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
 		--base_model_name=${base_model_name} \
 		--triplet_threshold=${triplet_threshold} \
 		--train_per_device_batch_size=${train_per_device_batch_size} \
@@ -83,7 +83,7 @@ train:
 # Generate average user embeddings on the given dataset.
 embed:
 	python3 -m src.models.predict_model \
-		--processed_dataset_path="data/processed/tweets-${max_seq_length}" \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--output_embeddings_json_path="data/artifacts/embeddings-${json_suffix}.json" \
 		--base_model_name=${base_model_name} \
 		--eval_per_device_batch_size=${eval_per_device_batch_size} \
