@@ -96,7 +96,7 @@ def reshape_batch(batch: Dict[str, Union[Array, str]]) -> Batch:
     enable parallel processing.
     """
     batch_info: Dict[BatchInfoKeys, str] = {
-        k: batch[k] for k in ["uid", "tid"]
+        k: batch.get(k, "") for k in ["uid", "tid"]
     }  # type: ignore
     batch_tokens: Dict[str, Array] = {
         k: np.array(batch[k]) for k in ["input_ids", "attention_mask"]
