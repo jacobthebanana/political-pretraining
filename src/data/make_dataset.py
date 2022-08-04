@@ -100,6 +100,9 @@ def _concatenate_by_uid_on_shard(
             "text": Value(dtype="string"),
         }
     )
+    delimiter = CONCATENATION_DELIMITER_MAP.get(
+        shard.data_args.concatenation_delimiter, ""  # type: ignore
+    )
     for uid, indices in tqdm(
         shard.lookup_shard.items(),
         ncols=80,
@@ -110,12 +113,7 @@ def _concatenate_by_uid_on_shard(
         texts: Iterable[Union[str, None]] = shard.dataset[indices]["text"]
         for text in texts:
             if text:
-                user_text = (
-                    text
-                    + CONCATENATION_DELIMITER_MAP[
-                        shard.data_args.concatenation_delimiter
-                    ]
-                )
+                user_text = text + delimiter
                 new_length = len(tokenizer(text_buffer + user_text)["input_ids"])
 
                 if new_length >= shard.model_args.max_seq_length:
@@ -150,7 +148,7 @@ def concatenate_by_uid(
     shards: List[_LOOKUP_DICT_SHARD_FOR_CONCATENATION] = []
     shard_length: int = len(uids) // num_shards + 1
 
-    for shard_index in range(num_shards):
+    for shard_index in tqdm(range(num_shards), ncols=80, desc="Creating shards"):
         lower_index: int = shard_index * shard_length
         upper_index: int = min(len(uids), lower_index + shard_length)
         uids_in_shard = uids[lower_index:upper_index]
@@ -303,9 +301,7 @@ def main():
         raw_dataset = create_raw_hf_dataset(data_args)
 
         if data_args.per_user_concatenation:
-            dataset_for_indexing = raw_dataset.remove_columns(
-                ["text", "input_ids", "attention_mask"]
-            )
+            dataset_for_indexing = raw_dataset.remove_columns(["text"])
             lookup_by_uid = create_uid_lookup(dataset_for_indexing, data_args)
             raw_dataset_concatenated = concatenate_by_uid(
                 raw_dataset, lookup_by_uid, model_args, data_args

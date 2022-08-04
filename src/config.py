@@ -26,8 +26,8 @@ class ConcatenationDelimiter(Enum):
 
 
 CONCATENATION_DELIMITER_MAP = {
-    ConcatenationDelimiter.SPACE: " ",
-    ConcatenationDelimiter.NEWLINE: "\n",
+    "space": " ",
+    "newline": "\n",
 }
 
 
