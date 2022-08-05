@@ -78,6 +78,7 @@ train:
 		--pooling_strategy=${pooling_strategy} \
 		--model_output_path=${model_output_path} \
 		--save_every_num_batches=${save_every_num_batches} \
+		--distance_function=${distance_function} \
 		--num_epochs=${num_epochs}
 
 # Generate average user embeddings on the given dataset.

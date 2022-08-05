@@ -11,6 +11,7 @@ from jax import numpy as jnp
 from flax.training.common_utils import shard
 from flax.jax_utils import replicate, unreplicate
 import optax
+from optax import cosine_distance
 import numpy as np
 from datasets import load_from_disk
 from datasets.arrow_dataset import Dataset
@@ -50,7 +51,7 @@ from .model_utils import (
     TrainStepOutput,
     ShardedTrainStepOutput,
 )
-from ..config import DataConfig, PipelineConfig, ModelConfig, UserID, LookupByUID
+from ..config import DataConfig, PipelineConfig, ModelConfig, UserID, LookupByUID, DistanceFunction
 
 Array = jnp.ndarray
 PRNGKey = jax.random.KeyArray
@@ -454,13 +455,20 @@ def get_triplet_loss(embeddings: BatchEmbeddings, model_args: ModelConfig) -> fl
     """
     chex.assert_equal_shape(embeddings)
 
-    #
-    d_anc_pos = squared_l2_distance(
-        embeddings.anchor_embeddings, embeddings.positive_embeddings
-    )
-    d_anc_neg = squared_l2_distance(
-        embeddings.anchor_embeddings, embeddings.negative_embeddings
-    )
+    if DistanceFunction(model_args.distance_function) is DistanceFunction.L2:
+        d_anc_pos = squared_l2_distance(
+            embeddings.anchor_embeddings, embeddings.positive_embeddings
+        )
+        d_anc_neg = squared_l2_distance(
+            embeddings.anchor_embeddings, embeddings.negative_embeddings
+        )
+    else:
+        d_anc_pos = cosine_distance(
+            embeddings.anchor_embeddings, embeddings.positive_embeddings
+        )
+        d_anc_neg = cosine_distance(
+            embeddings.anchor_embeddings, embeddings.negative_embeddings
+        )
 
     # Add threshold before taking the batch-wise mean. The mean should be the last step.
     loss = d_anc_pos - d_anc_neg + model_args.triplet_threshold

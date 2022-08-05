@@ -3,6 +3,7 @@ from typing import Dict
 import json
 from collections import Counter
 from os import environ
+from dataclasses import replace
 
 import jax
 import chex
@@ -45,6 +46,7 @@ from ..config import (
     PipelineConfig,
     LookupByUID,
     BatchTokenKeys,
+    DistanceFunction,
 )
 
 Dataset = datasets.arrow_dataset.Dataset
@@ -445,45 +447,53 @@ class StepTraining(unittest.TestCase):
         )
 
     def test_loss_reduction(self):
-        replicated_model_params = replicate(self.model.params)
-        optimizer = optax.adamw(0.001)
-        optimizer_state = optimizer.init(self.model.params)
-        replicated_optimizer_state = replicate(optimizer_state)
+        for distance_function in (
+            DistanceFunction.L2,
+            DistanceFunction.COSINE_DISTANCE,
+        ):
+            self.model_args = replace(model_args, distance_function=distance_function)
+            replicated_model_params = replicate(self.model.params)
+            optimizer = optax.adamw(0.001)
+            optimizer_state = optimizer.init(self.model.params)
+            replicated_optimizer_state = replicate(optimizer_state)
 
-        train_losses = []
-        for n_epoch in range(5):  # test epoch
-            # Note that the dataloader shards data by default.
-            dataloader = get_train_dataloader(
-                self.preprocessed_dataset,
-                self.lookup_by_uid,
-                jax.random.PRNGKey(0),
-                pipeline_args,
-            )
-
-            epoch_train_losses = []
-            for mining_batch in tqdm(
-                dataloader, total=self.num_batches, desc="Unit testing", ncols=80
-            ):
-                filtered_token_batch = get_top_triplet_pairs(
-                    mining_batch, self.model, model_args, replicated_model_params
+            train_losses = []
+            for n_epoch in range(5):  # test epoch
+                # Note that the dataloader shards data by default.
+                dataloader = get_train_dataloader(
+                    self.preprocessed_dataset,
+                    self.lookup_by_uid,
+                    jax.random.PRNGKey(0),
+                    pipeline_args,
                 )
 
-                train_step_output = _train_step(
-                    filtered_token_batch,
-                    self.model,
-                    model_args,
-                    replicated_model_params,
-                    optimizer,
-                    replicated_optimizer_state,
-                )
+                epoch_train_losses = []
+                for mining_batch in tqdm(
+                    dataloader, total=self.num_batches, desc="Unit testing", ncols=80
+                ):
+                    filtered_token_batch = get_top_triplet_pairs(
+                        mining_batch,
+                        self.model,
+                        self.model_args,
+                        replicated_model_params,
+                    )
 
-                replicated_model_params = train_step_output.model_params
-                replicated_optimizer_state = train_step_output.optimizer_state
+                    train_step_output = _train_step(
+                        filtered_token_batch,
+                        self.model,
+                        self.model_args,
+                        replicated_model_params,
+                        optimizer,
+                        replicated_optimizer_state,
+                    )
 
-                training_loss = train_step_output.metrics["training_loss"][0]
-                epoch_train_losses.append(training_loss)
+                    replicated_model_params = train_step_output.model_params
+                    replicated_optimizer_state = train_step_output.optimizer_state
 
-            train_losses.append(sum(epoch_train_losses) / len(epoch_train_losses))
+                    training_loss = train_step_output.metrics["training_loss"][0]
+                    epoch_train_losses.append(training_loss)
 
-        print("Train losses (mean per epoch):", train_losses)
-        self.assertLessEqual(train_losses[-1], train_losses[0])
+                train_losses.append(sum(epoch_train_losses) / len(epoch_train_losses))
+
+            print("Train losses (mean per epoch):", train_losses)
+            self.assertLessEqual(train_losses[-1], train_losses[0])

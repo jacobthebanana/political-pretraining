@@ -25,6 +25,11 @@ class ConcatenationDelimiter(Enum):
     NEWLINE = "newline"
 
 
+class DistanceFunction(Enum):
+    L2 = "l2"
+    COSINE_DISTANCE = "cosine_distance"
+
+
 CONCATENATION_DELIMITER_MAP = {
     "space": " ",
     "newline": "\n",
@@ -40,6 +45,7 @@ class ModelConfig:
     )
     triplet_threshold: Optional[float] = field(default=1e2)
     learning_rate: float = field(default=0.001)
+    distance_function: DistanceFunction = field(default=DistanceFunction.L2)
 
 
 @dataclass
