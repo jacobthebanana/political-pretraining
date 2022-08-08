@@ -6,7 +6,7 @@ from enum import Enum
 from dataclasses import dataclass, field
 
 
-BatchTokenKeys = Literal["input_ids", "attention_mask"]
+BatchTokenKeys = Literal["input_ids", "attention_mask", "label"]
 BatchInfoKeys = Literal["uid", "tid"]
 MetricKeys = Literal["training_loss", "training_loss_net"]
 UserID = str
@@ -47,6 +47,9 @@ class ModelConfig:
     triplet_threshold: Optional[float] = field(default=1e2)
     learning_rate: float = field(default=0.001)
     distance_function: DistanceFunction = field(default=DistanceFunction.L2)
+    # Whether mask out triplets where the author of anc and pos are from
+    # the same category as the author of neg.
+    enable_masking: bool = field(default=False)
 
 
 @dataclass

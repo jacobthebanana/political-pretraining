@@ -127,10 +127,11 @@ def _concatenate_by_uid_on_shard(
 ) -> Dataset:
     tokenizer = AutoTokenizer.from_pretrained(shard.model_args.base_model_name)
 
-    output = {"uid": [], "text": [], "label": []}
+    output = {"uid": [], "tid": [], "text": [], "label": []}
     features = Features(
         {
             "uid": Value(dtype="string"),
+            "tid": Value(dtype="string"),
             "text": Value(dtype="string"),
             "label": Value(dtype="int8"),
         }
@@ -145,12 +146,13 @@ def _concatenate_by_uid_on_shard(
         desc=f"Concatenating {shard.shard_index}/{shard.num_shards}",
     ):
         if shard.label_lookup:
-            user_label = shard.label_lookup.get("uid", None)
+            user_label = shard.label_lookup.get("uid", -1)
         else:
             user_label = None
 
         text_buffer = ""
         texts: Iterable[Union[str, None]] = shard.dataset[indices]["text"]
+        leading_tid: str = shard.dataset[indices]["tid"][0]
         for text in texts:
             if text:
                 user_text = text + delimiter
@@ -158,11 +160,17 @@ def _concatenate_by_uid_on_shard(
 
                 if new_length >= shard.model_args.max_seq_length:
                     output["uid"].append(uid)
+                    output["tid"].append(leading_tid)
                     output["text"].append(text_buffer)
-                    output["label"].append(user_label)
+                    output["label"].extend([user_label])
                     text_buffer = ""
                 else:
                     text_buffer += user_text
+
+        output["uid"].append(uid)
+        output["tid"].append(leading_tid)
+        output["text"].append(text_buffer)
+        output["label"].extend([user_label])
 
     return Dataset.from_dict(output, features=features)
 
@@ -377,6 +385,7 @@ def main():
                 raw_dataset, model_args, data_args
             )
         processed_dataset.save_to_disk(data_args.processed_dataset_path)
+        print(processed_dataset)
     else:
         processed_dataset: Dataset = load_from_disk(
             data_args.processed_dataset_path

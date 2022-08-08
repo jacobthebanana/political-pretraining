@@ -22,18 +22,18 @@ Array = jax.numpy.ndarray
 TripletEligibilityMask = jax.numpy.ndarray
 Embeddings = jax.numpy.ndarray
 
-TokenizerOutput = Dict[BatchTokenKeys, Array]
+TokenizerOutputWithLabels = Dict[BatchTokenKeys, Array]
 ModelParams = optax.Params
 ReplicatedModelParams = optax.Params
 
 
 class Batch(NamedTuple):
     """
-    Batch yielded from the dataloader.
+    Batch yielded from the dataloader, plus labels.
     """
 
     info: Dict[BatchInfoKeys, str]
-    tokens: TokenizerOutput
+    tokens: TokenizerOutputWithLabels
 
 
 class BatchWithEmbeddings(NamedTuple):
@@ -96,10 +96,12 @@ def reshape_batch(batch: Dict[str, Union[Array, str]]) -> Batch:
     enable parallel processing.
     """
     batch_info: Dict[BatchInfoKeys, str] = {
-        k: batch.get(k, "") for k in ["uid", "tid"]
+        # "tid" might be empty if the entries were concatenated.
+        k: batch.get(k, "")
+        for k in ["uid", "tid"]
     }  # type: ignore
     batch_tokens: Dict[str, Array] = {
-        k: np.array(batch[k]) for k in ["input_ids", "attention_mask"]
+        k: np.array(batch[k]) for k in ["input_ids", "attention_mask", "label"]
     }  # type: ignore
 
     # Only tokens are processed on the accelerators.
@@ -115,9 +117,9 @@ class TokenBatch(NamedTuple):
     Each leaf is a JAX Numpy Array and could be sharded.
     """
 
-    anchor_tokens: TokenizerOutput
-    positive_tokens: TokenizerOutput
-    negative_tokens: TokenizerOutput
+    anchor_tokens: TokenizerOutputWithLabels
+    positive_tokens: TokenizerOutputWithLabels
+    negative_tokens: TokenizerOutputWithLabels
 
 
 class FilteredTokenBatch(NamedTuple):
@@ -126,9 +128,9 @@ class FilteredTokenBatch(NamedTuple):
     (anc, pos, neg) of the same shape, plus triplet_margin array.
     """
 
-    anchor_tokens: TokenizerOutput
-    positive_tokens: TokenizerOutput
-    negative_tokens: TokenizerOutput
+    anchor_tokens: TokenizerOutputWithLabels
+    positive_tokens: TokenizerOutputWithLabels
+    negative_tokens: TokenizerOutputWithLabels
 
     triplet_margin: Array
 
@@ -219,7 +221,7 @@ def get_token_batch(mining_batch: ShardedBatchForMining) -> TokenBatch:
      token_batch.
     """
 
-    def get_tokens(batch: Batch) -> TokenizerOutput:
+    def get_tokens(batch: Batch) -> TokenizerOutputWithLabels:
         return batch.tokens
 
     return TokenBatch(*map(get_tokens, mining_batch))
@@ -284,8 +286,8 @@ def gather_shards(sharded_tree):
 
 
 def array_index_tokenizer_output(
-    tokenizer_output: TokenizerOutput, indices: Iterable[int]
-) -> TokenizerOutput:
+    tokenizer_output: TokenizerOutputWithLabels, indices: Iterable[int]
+) -> TokenizerOutputWithLabels:
     """
     Index the given tokenizer output with an iterable of indices.
     Reusable (unlike lambda functions.)
@@ -298,7 +300,7 @@ def array_index_tokenizer_output(
     Returns:
      array-indexed tokenizer_output.
     """
-    output: TokenizerOutput = {
+    output: TokenizerOutputWithLabels = {
         "attention_mask": tokenizer_output["attention_mask"][indices, :],
         "input_ids": tokenizer_output["input_ids"][indices, :],
     }

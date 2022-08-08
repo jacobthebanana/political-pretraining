@@ -76,7 +76,11 @@ def _run_batch_inference_single_shard(
     Returns:
      ndarray of (batch_size, embedding_dimension).
     """
-    outputs: FlaxBaseModelOutputWithPooling = model(**batch, params=model_params)  # type: ignore
+    outputs: FlaxBaseModelOutputWithPooling = model(
+        input_ids=batch["input_ids"],
+        attention_mask=batch["attention_mask"],
+        params=model_params,
+    )  # type: ignore
     pooling_fn = get_pooling_fn(model_args)
     embeddings = pooling_fn(outputs)
 

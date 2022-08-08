@@ -51,7 +51,7 @@ class GetDataLoaderFromProcessedDataset(unittest.TestCase):
         for batch in dataloader:
             self.assertSetEqual(set(batch.info.keys()), set(["uid", "tid"]))
             self.assertSetEqual(
-                set(batch.tokens.keys()), set(["attention_mask", "input_ids"])
+                set(batch.tokens.keys()), set(["attention_mask", "input_ids", "label"])
             )
             for key in ["attention_mask", "input_ids"]:  # type: ignore
                 key: BatchTokenKeys
@@ -66,6 +66,7 @@ class GetDataLoaderFromProcessedDataset(unittest.TestCase):
         )
         tid_list = []
         uid_list = []
+        text_set = set()
         for batch in dataloader_with_leftovers:
             tid_list.extend(batch.info["tid"])
             uid_list.extend(batch.info["uid"])
