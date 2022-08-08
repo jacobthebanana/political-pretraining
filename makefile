@@ -32,6 +32,13 @@ clean_all: clean
 
 setup: clean setup_data_folder download_data download_text
 
+# Generate filtered label file where classifier label must be non-empty.
+generate_filtered_label_file:
+	python3 -m src.data.filter_label_file \
+		--raw_label_path="data/raw/user_labels.csv" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json"
+
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
 preprocess_csv: 
 	python3 -m src.data.make_dataset \
@@ -91,7 +98,7 @@ embed:
 		--pooling_strategy=${pooling_strategy}
 
 # Set up truncated dataset for testing.
-setup_data_tests:
+setup_data_tests: generate_filtered_label_file
 	mkdir -pv data/testing/raw
 	mkdir -pv data/testing/interim
 	mkdir -pv data/testing/processed

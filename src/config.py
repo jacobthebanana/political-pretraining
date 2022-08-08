@@ -12,6 +12,7 @@ MetricKeys = Literal["training_loss", "training_loss_net"]
 UserID = str
 
 LookupByUID = Dict[UserID, Tuple[int, ...]]
+LabelByUID = Dict[UserID, int]
 
 
 class PoolingStrategy(Enum):
@@ -52,6 +53,11 @@ class ModelConfig:
 class DataConfig:
     source_format: str = field(default="csv")
     source_path: str = field(default="data/raw/tweets.csv")
+    raw_label_path: str = field(default="data/raw/user_labels.csv")
+    filtered_label_path: str = field(default="data/interim/filtered_user_labels.csv")
+    label_id_to_label_text_path: str = field(
+        default="data/interim/label_id_to_label_text.json"
+    )
     processed_dataset_path: str = field(default="data/processed/tweets")
     processed_lookup_by_uid_json_path: str = field(
         default="data/processed/tweets/lookup_by_uid.json"
