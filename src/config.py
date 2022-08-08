@@ -58,6 +58,8 @@ class DataConfig:
     label_id_to_label_text_path: str = field(
         default="data/interim/label_id_to_label_text.json"
     )
+    # Whether to exclude text from unlabelled users in the preprocessed dataset.
+    require_labels: bool = field(default=False)
     processed_dataset_path: str = field(default="data/processed/tweets")
     processed_lookup_by_uid_json_path: str = field(
         default="data/processed/tweets/lookup_by_uid.json"

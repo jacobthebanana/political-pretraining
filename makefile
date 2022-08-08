@@ -40,10 +40,12 @@ generate_filtered_label_file:
 		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json"
 
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
-preprocess_csv: 
+preprocess_csv: generate_filtered_label_file
 	python3 -m src.data.make_dataset \
 		--source_format=csv \
 		--source_path="data/raw/tweets.csv" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--require_labels=${require_labels} \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
 		--max_seq_length=${max_seq_length} \
@@ -55,10 +57,12 @@ preprocess_csv:
 		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
 
-preprocess_json: 
+preprocess_json: generate_filtered_label_file
 	python3 -m src.data.make_dataset \
 		--source_format=json \
 		--source_path="data/raw/tweets.json" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--require_labels=${require_labels} \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
 		--max_seq_length=${max_seq_length} \

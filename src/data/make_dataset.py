@@ -1,8 +1,17 @@
-from typing import Any, Container, Dict, List, Tuple, Iterable, Union
+from typing import (
+    Any,
+    Container,
+    Dict,
+    List,
+    Tuple,
+    Iterable,
+    Union,
+    Optional,
+)
 from collections import defaultdict
 import multiprocessing
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import datasets
 from datasets import (
@@ -20,6 +29,7 @@ from ..config import (
     ModelConfig,
     DataConfig,
     LookupByUID,
+    LabelByUID,
     UserID,
     CONCATENATION_DELIMITER_MAP,
 )
@@ -42,6 +52,7 @@ class _LOOKUP_DICT_SHARD_FOR_CONCATENATION:
     data_args: DataConfig
     shard_index: int
     num_shards: int
+    label_lookup: Optional[LabelByUID] = field(default=None)
 
 
 def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
@@ -78,6 +89,29 @@ def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
     return sharded_dataset
 
 
+def load_user_labels(data_args: DataConfig) -> LabelByUID:
+    """
+    Load user labels from the *filtered* user label csv.
+
+    Args:
+     data_args: specifies path to the filtered user label csv.
+    """
+    with open(data_args.filtered_label_path, "r") as filtered_label_file:
+        filtered_labels = filtered_label_file.readlines()
+
+    output: Dict[UserID, int] = {}
+    for filtered_label_entry in tqdm(
+        filtered_labels[1:], ncols=80, desc="Loading labels"
+    ):
+        entry_fields = filtered_label_entry.split(",")
+        entry_label = int(entry_fields[0])
+        entry_user_id = entry_fields[-1]
+
+        output[entry_user_id] = entry_label
+
+    return output
+
+
 def filter_hf_dataset_by_uid(
     dataset: Dataset, uid_set: Container[str], data_args: DataConfig
 ) -> Dataset:
@@ -93,11 +127,12 @@ def _concatenate_by_uid_on_shard(
 ) -> Dataset:
     tokenizer = AutoTokenizer.from_pretrained(shard.model_args.base_model_name)
 
-    output = {"uid": [], "text": []}
+    output = {"uid": [], "text": [], "label": []}
     features = Features(
         {
             "uid": Value(dtype="string"),
             "text": Value(dtype="string"),
+            "label": Value(dtype="int8"),
         }
     )
     delimiter = CONCATENATION_DELIMITER_MAP.get(
@@ -109,6 +144,11 @@ def _concatenate_by_uid_on_shard(
         total=len(shard.lookup_shard.keys()),
         desc=f"Concatenating {shard.shard_index}/{shard.num_shards}",
     ):
+        if shard.label_lookup:
+            user_label = shard.label_lookup.get("uid", None)
+        else:
+            user_label = None
+
         text_buffer = ""
         texts: Iterable[Union[str, None]] = shard.dataset[indices]["text"]
         for text in texts:
@@ -119,6 +159,7 @@ def _concatenate_by_uid_on_shard(
                 if new_length >= shard.model_args.max_seq_length:
                     output["uid"].append(uid)
                     output["text"].append(text_buffer)
+                    output["label"].append(user_label)
                     text_buffer = ""
                 else:
                     text_buffer += user_text
@@ -131,17 +172,22 @@ def concatenate_by_uid(
     lookup_by_uid: LookupByUID,
     model_args: ModelConfig,
     data_args: DataConfig,
+    label_lookup: Optional[LabelByUID] = None,
 ) -> Dataset:
     """
     Given a raw text dataset, concatenate sentences from each uid,
     starting a new entry whenever the number of tokens in the batch
     exceeds model_args.max_seq_length.
 
+    If data_args.filtered_label_path is non-empty, attach to each entry
+    the label of the author.
+
     params:
      dataset: raw HF dataset (with both `text` and `uid`)
      lookup_by_uid: uid-to-index map. See `create_uid_lookup`.
      model_args: specifies max_seq_length.
-     data_args: specifies
+     data_args: specifies num_procs.
+     label_lookup: Optional; user-level labels to include in dataset.
     """
     uids = list(lookup_by_uid.keys())
     num_shards = data_args.num_procs
@@ -163,6 +209,7 @@ def concatenate_by_uid(
             data_args,
             shard_index=shard_index,
             num_shards=num_shards,
+            label_lookup=label_lookup,
         )
         shards.append(lookup_shard)
 
@@ -300,11 +347,26 @@ def main():
     if data_args.rerun_tokenization:
         raw_dataset = create_raw_hf_dataset(data_args)
 
+        if data_args.require_labels or (data_args.filtered_label_path != ""):
+            label_lookup = load_user_labels(data_args)
+        else:
+            label_lookup = None
+
+        if data_args.require_labels:
+            assert label_lookup is not None, "Labels are required for filtering."
+            raw_dataset = filter_hf_dataset_by_uid(
+                raw_dataset, label_lookup.keys(), data_args
+            )
+
         if data_args.per_user_concatenation:
             dataset_for_indexing = raw_dataset.remove_columns(["text"])
             lookup_by_uid = create_uid_lookup(dataset_for_indexing, data_args)
             raw_dataset_concatenated = concatenate_by_uid(
-                raw_dataset, lookup_by_uid, model_args, data_args
+                raw_dataset,
+                lookup_by_uid,
+                model_args,
+                data_args,
+                label_lookup=label_lookup,
             )
             processed_dataset = preprocess_and_tokenize_dataset(
                 raw_dataset_concatenated, model_args, data_args
@@ -319,7 +381,6 @@ def main():
         processed_dataset: Dataset = load_from_disk(
             data_args.processed_dataset_path
         )  # type: ignore
-
     if data_args.enable_indexing:
         dataset_for_indexing = processed_dataset.remove_columns(
             ["text", "input_ids", "attention_mask"]

@@ -11,6 +11,7 @@ from ..data.make_dataset import (
     create_uid_lookup,
     _concatenate_by_uid_on_shard,
     concatenate_by_uid,
+    load_user_labels,
     _LOOKUP_DICT_SHARD_FOR_CONCATENATION,
 )
 from ..config import ModelConfig, DataConfig
@@ -57,6 +58,16 @@ class CreateDatasetFromRawText(unittest.TestCase):
             num_test_entries = len(test_tweet_json_file.readlines())
 
         self.assertEqual(len(self.dataset), num_test_entries)
+
+
+class LoadUserLabels(unittest.TestCase):
+    def setUp(self):
+        self.user_labels = load_user_labels(data_args)
+
+    def test_user_label_data_types(self):
+        for key, value in self.user_labels.items():
+            self.assertIsInstance(key, str)
+            self.assertIsInstance(value, int)
 
 
 class CreateDatasetShardFromRawText(unittest.TestCase):
