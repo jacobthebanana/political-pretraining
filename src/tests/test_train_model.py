@@ -27,6 +27,7 @@ from ..models.train_model import (
     get_margins,
     get_top_triplet_pairs,
     get_triplet_loss,
+    get_eligibility_mask,
     _get_neg_anc_indices,
     _train_step,
     _embed_mining_batch,
@@ -38,6 +39,7 @@ from ..models.model_utils import (
     ModelParams,
     ReplicatedModelParams,
     BatchEmbeddings,
+    ShardedTokenBatch,
     ShardedBatchEmbeddings,
 )
 from ..config import (
@@ -95,7 +97,7 @@ class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
             )
             self.assertSetEqual(
                 set(batch.anchor_batch.tokens.keys()),
-                set(["attention_mask", "input_ids"]),
+                set(["attention_mask", "input_ids", "label"]),
             )
             for key in ["attention_mask", "input_ids"]:  # type: ignore
                 key: BatchTokenKeys
@@ -328,6 +330,30 @@ class RankMiningTriplets(unittest.TestCase):
             model_args.base_model_name, from_pt=True
         )
 
+    def test_eligibility_mask_shape_and_value(self):
+        dataloader = get_train_dataloader(
+            self.preprocessed_dataset,
+            self.lookup_by_uid,
+            jax.random.PRNGKey(0),
+            pipeline_args,
+        )
+
+        model_args_with_eligibility_mask = replace(model_args, enable_masking=True)
+
+        mining_batch = next(dataloader)
+        batch_tokens: ShardedTokenBatch = get_token_batch(mining_batch)
+        gathered_batch_tokens: TokenBatch = gather_shards(batch_tokens)
+
+        eligibility_mask = get_eligibility_mask(
+            gathered_batch_tokens, model_args_with_eligibility_mask, data_args
+        )
+
+        n_anc = pipeline_args.train_per_device_batch_size * num_devices
+        n_neg = pipeline_args.eval_per_device_batch_size * num_devices
+
+        chex.assert_axis_dimension(eligibility_mask, 1, n_anc)
+        chex.assert_axis_dimension(eligibility_mask, 0, n_neg)
+
     def test_ranking_shape(self):
         dataloader = get_train_dataloader(
             self.preprocessed_dataset,
@@ -343,7 +369,7 @@ class RankMiningTriplets(unittest.TestCase):
             dataloader, total=self.num_batches, desc="Unit testing", ncols=80
         ):
             filtered_token_batch = get_top_triplet_pairs(
-                mining_batch, self.model, model_args, replicated_model_params
+                mining_batch, self.model, model_args, data_args, replicated_model_params
             )
             chex.assert_equal_shape(
                 (
@@ -475,6 +501,7 @@ class StepTraining(unittest.TestCase):
                         mining_batch,
                         self.model,
                         self.model_args,
+                        data_args,
                         replicated_model_params,
                     )
 

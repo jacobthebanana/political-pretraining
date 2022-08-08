@@ -28,30 +28,30 @@ import wandb
 from .model_utils import (
     Batch,
     ShardedBatchForMining,
-    TweetUser,
-    BatchWithEmbeddings,
-    BatchForMiningWithEmbeddings,
     get_token_batch,
     gather_shards,
     TripletEligibilityMask,
-    TokenizerOutput,
+    TokenizerOutputWithLabels,
     TokenBatch,
     ShardedTokenBatch,
     ShardedBatchEmbeddings,
     BatchEmbeddings,
-    Embeddings,
     reshape_batch,
     get_pooling_fn,
     ReplicatedModelParams,
     ModelParams,
     squared_l2_distance,
-    ShardedFilteredTokenBatch,
     FilteredTokenBatch,
     array_index_tokenizer_output,
     TrainStepOutput,
-    ShardedTrainStepOutput,
 )
-from ..config import DataConfig, PipelineConfig, ModelConfig, UserID, LookupByUID, DistanceFunction
+from ..config import (
+    DataConfig,
+    PipelineConfig,
+    ModelConfig,
+    LookupByUID,
+    DistanceFunction,
+)
 
 Array = jnp.ndarray
 PRNGKey = jax.random.KeyArray
@@ -109,7 +109,7 @@ def get_train_dataloader(
         anc_uids = anc_batch.info["uid"]
         pos_indices = np.zeros_like(anc_indices)
         for anc_index, uid in enumerate(anc_uids):
-            # Indices of tweets from the same user.
+            # Indices of entries from the same user.
             pos_index_choices = jnp.array(lookup_by_uid.get(uid))
             pos_index = jax.random.choice(pos_prng_key, pos_index_choices)
             pos_indices[anc_index] = pos_index
@@ -147,9 +147,13 @@ def _embed_mining_batch_single_shard(
     """
 
     def apply_model(
-        tokens: TokenizerOutput,
+        tokens: TokenizerOutputWithLabels,
     ) -> FlaxBaseModelOutputWithPooling:
-        outputs = model(**tokens, params=model_params)  # type: ignore
+        outputs = model(
+            input_ids=tokens["input_ids"],
+            attention_mask=tokens["attention_mask"],
+            params=model_params,  # type: ignore
+        )
         return outputs  # type: ignore
 
     outputs = map(apply_model, token_batch)
@@ -218,6 +222,51 @@ def get_anc_neg_distance(batch_embeddings: BatchEmbeddings) -> Array:
     )
 
     return l2_difference
+
+
+def get_eligibility_mask(
+    gathered_token_batch: TokenBatch,
+    model_args: ModelConfig,
+    data_args: DataConfig,
+) -> TripletEligibilityMask:
+    """
+    Given a ShardedBatchForMining with n_anc anchors and positives,
+    as well as n_neg negatives, return a (n_neg, n_anc) array of
+    0s and infinities to be added to the margins.
+
+    Args:
+     token_batch: un-sharded batch of anchors, positives, and negatives
+        with tokens and- most importantly- labels.
+     data_args: specifies enable_masking.
+
+    Returns:
+     If data_args.enable_masking is False, return a (n_neg, n_anc) array
+     of 0s. Otherwise, return a (n_neg, n_anc) array where the
+     (j, k) entry is 0 if the triplet (anc_k, pos_k, neg_j) is valid
+     (the label of the author of anc_k and pos_k is different from the
+     label of the author of neg_j.) This entry would be +inf otherwise.
+    """
+    anc_labels = gathered_token_batch.anchor_tokens["label"]
+    pos_labels = gathered_token_batch.positive_tokens["label"]
+    neg_labels = gathered_token_batch.negative_tokens["label"]
+
+    chex.assert_equal_shape((anc_labels, pos_labels))
+
+    n_anc = anc_labels.shape[0]
+    n_neg = neg_labels.shape[0]
+
+    if not (data_args.require_labels and model_args.enable_masking):
+        return jnp.zeros((n_neg, n_anc))
+
+    anc_labels_repeated = jnp.repeat(anc_labels, n_neg, axis=-1).reshape((n_anc, n_neg))
+
+    # (n_neg, n_anc)
+    anc_labels_repeated_transposed = jnp.transpose(anc_labels_repeated, axes=(1, 0))
+
+    # (n_neg, n_anc)
+    neg_labels_repeated = jnp.repeat(neg_labels, n_anc, axis=-1).reshape((n_neg, n_anc))
+
+    return jnp.where(anc_labels_repeated_transposed != neg_labels_repeated, 0, jnp.inf)
 
 
 def get_margins(batch_embeddings: BatchEmbeddings) -> Array:
@@ -291,6 +340,7 @@ def get_top_triplet_pairs(
     mining_batch: ShardedBatchForMining,
     model: FlaxRobertaModel,
     model_args: ModelConfig,
+    data_args: DataConfig,
     sharded_model_params: ReplicatedModelParams,
 ) -> FilteredTokenBatch:
     """
@@ -320,7 +370,10 @@ def get_top_triplet_pairs(
     gathered_batch_embeddings: BatchEmbeddings = gather_shards(sharded_batch_embeddings)
     gathered_batch_tokens: TokenBatch = gather_shards(batch_tokens)
 
-    margins = get_margins(gathered_batch_embeddings)
+    eligibility_mask = get_eligibility_mask(
+        gathered_batch_tokens, model_args, data_args
+    )
+    margins = get_margins(gathered_batch_embeddings) + eligibility_mask
     num_neg = margins.shape[0]
     num_anc = margins.shape[1]
 
@@ -536,7 +589,7 @@ def main():
             )
         ):
             filtered_token_batch = get_top_triplet_pairs(
-                mining_batch, model, model_args, replicated_model_params
+                mining_batch, model, model_args, data_args, replicated_model_params
             )
 
             train_step_output = _train_step(

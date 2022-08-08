@@ -90,6 +90,7 @@ train:
 		--model_output_path=${model_output_path} \
 		--save_every_num_batches=${save_every_num_batches} \
 		--distance_function=${distance_function} \
+		--enable_masking=${enable_masking} \
 		--num_epochs=${num_epochs}
 
 # Generate average user embeddings on the given dataset.
@@ -125,6 +126,8 @@ preprocess_test_dataset:
 	python3 -m src.data.make_dataset \
 		--base_model_name=${unittest_base_model_name} \
 		--source_path="data/testing/raw/tweets.csv" \
+		--per_user_concatenation=1 \
+		--enable_indexing=1 \
 		--processed_dataset_path="data/testing/processed/tweets" \
 		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" 
 
