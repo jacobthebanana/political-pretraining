@@ -105,7 +105,7 @@ def load_user_labels(data_args: DataConfig) -> LabelByUID:
     ):
         entry_fields = filtered_label_entry.split(",")
         entry_label = int(entry_fields[0])
-        entry_user_id = entry_fields[-1]
+        entry_user_id = entry_fields[-1].rstrip("\n")
 
         output[entry_user_id] = entry_label
 
@@ -362,11 +362,12 @@ def main():
 
         if data_args.require_labels:
             assert label_lookup is not None, "Labels are required for filtering."
+            print("Unfiltered", raw_dataset)
             raw_dataset = filter_hf_dataset_by_uid(
                 raw_dataset, label_lookup.keys(), data_args
             )
+            print("Filtered", raw_dataset)
 
-        if data_args.per_user_concatenation:
             dataset_for_indexing = raw_dataset.remove_columns(["text"])
             lookup_by_uid = create_uid_lookup(dataset_for_indexing, data_args)
             raw_dataset_concatenated = concatenate_by_uid(
