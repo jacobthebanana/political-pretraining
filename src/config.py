@@ -1,7 +1,7 @@
 from typing import Any, Container, Dict, Tuple, Optional
 from typing_extensions import Literal
 from enum import Enum
-
+import multiprocessing
 
 from dataclasses import dataclass, field
 
@@ -69,7 +69,7 @@ class DataConfig:
     )
     model_output_path: str = field(default="data/artifacts/saved_model")
     output_embeddings_json_path: str = field(default="data/artifacts/embeddings.json")
-    num_procs: int = field(default=32)
+    num_procs: int = field(default=multiprocessing.cpu_count())
     # Keep only the last 1/shard_denominator of data.
     shard_denominator: int = field(default=1)
     # Whether to generate the lookup_by_uid json.
