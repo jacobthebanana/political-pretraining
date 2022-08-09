@@ -368,6 +368,7 @@ def main():
             )
             print("Filtered", raw_dataset)
 
+        if data_args.per_user_concatenation:
             dataset_for_indexing = raw_dataset.remove_columns(["text"])
             lookup_by_uid = create_uid_lookup(dataset_for_indexing, data_args)
             raw_dataset_concatenated = concatenate_by_uid(
