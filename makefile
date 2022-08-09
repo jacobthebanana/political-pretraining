@@ -93,6 +93,19 @@ train:
 		--enable_masking=${enable_masking} \
 		--num_epochs=${num_epochs}
 
+train_cross_entropy:
+	python3 -m src.models.train_model_cross_entropy \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
+		--base_model_name=${base_model_name} \
+		--train_per_device_batch_size=${train_per_device_batch_size} \
+		--eval_per_device_batch_size=${eval_per_device_batch_size} \
+		--model_output_path=${model_output_path} \
+		--save_every_num_batches=${save_every_num_batches} \
+		--weight_decay=${weight_decay} \
+		--test_ratio=${test_ratio} \
+		--eval_every_num_batches=${eval_every_num_batches} \
+		--num_epochs=${num_epochs}
+
 # Generate average user embeddings on the given dataset.
 embed:
 	python3 -m src.models.predict_model \

@@ -6,9 +6,16 @@ import multiprocessing
 from dataclasses import dataclass, field
 
 
-BatchTokenKeys = Literal["input_ids", "attention_mask", "label"]
+BatchTokenKeys = Literal["input_ids", "attention_mask"]
+BatchTokenKeysWithLabels = Literal["input_ids", "attention_mask", "label"]
 BatchInfoKeys = Literal["uid", "tid"]
-MetricKeys = Literal["training_loss", "training_loss_net"]
+MetricKeys = Literal[
+    "training_loss",
+    "training_loss_net",
+    "training_accuracy",
+    "eval_accuracy",
+    "eval_loss",
+]
 UserID = str
 
 LookupByUID = Dict[UserID, Tuple[int, ...]]
@@ -46,6 +53,7 @@ class ModelConfig:
     )
     triplet_threshold: Optional[float] = field(default=1e2)
     learning_rate: float = field(default=0.001)
+    weight_decay: float = field(default=0.00001)
     distance_function: DistanceFunction = field(default=DistanceFunction.L2)
     # Whether mask out triplets where the author of anc and pos are from
     # the same category as the author of neg.
@@ -80,6 +88,7 @@ class DataConfig:
     concatenation_delimiter: ConcatenationDelimiter = field(
         default=ConcatenationDelimiter.NEWLINE
     )
+    test_ratio: float = field(default=0.2)
 
 
 @dataclass
@@ -91,3 +100,4 @@ class PipelineConfig:
     train_prng_key: int = field(default=0)
     num_epochs: int = field(default=1)
     save_every_num_batches: int = field(default=1000)
+    eval_every_num_batches: int = field(default=10)

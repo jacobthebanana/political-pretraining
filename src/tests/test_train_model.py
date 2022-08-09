@@ -32,6 +32,7 @@ from ..models.train_model import (
     _train_step,
     _embed_mining_batch,
 )
+from ..models.train_model_cross_entropy import get_classification_dataloader
 from ..models.model_utils import (
     TokenBatch,
     get_token_batch,
@@ -47,7 +48,7 @@ from ..config import (
     ModelConfig,
     PipelineConfig,
     LookupByUID,
-    BatchTokenKeys,
+    BatchTokenKeysWithLabels,
     DistanceFunction,
 )
 
@@ -100,7 +101,7 @@ class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
                 set(["attention_mask", "input_ids", "label"]),
             )
             for key in ["attention_mask", "input_ids"]:  # type: ignore
-                key: BatchTokenKeys
+                key: BatchTokenKeysWithLabels
                 value = batch.anchor_batch.tokens[key]
                 chex.assert_axis_dimension(value, 0, jax.device_count())
                 chex.assert_axis_dimension(
@@ -109,7 +110,7 @@ class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
                 chex.assert_axis_dimension(value, 2, model_args.max_seq_length)
 
             for key in ["attention_mask", "input_ids"]:  # type: ignore
-                key: BatchTokenKeys
+                key: BatchTokenKeysWithLabels
                 value = batch.positive_batch.tokens[key]
                 chex.assert_axis_dimension(value, 0, jax.device_count())
                 chex.assert_axis_dimension(
@@ -118,7 +119,7 @@ class GetTrainDataLoaderFromProcessedDataset(unittest.TestCase):
                 chex.assert_axis_dimension(value, 2, model_args.max_seq_length)
 
             for key in ["attention_mask", "input_ids"]:  # type: ignore
-                key: BatchTokenKeys
+                key: BatchTokenKeysWithLabels
                 value = batch.negative_candidate_batch.tokens[key]
                 chex.assert_axis_dimension(value, 0, jax.device_count())
                 chex.assert_axis_dimension(
@@ -524,3 +525,38 @@ class StepTraining(unittest.TestCase):
 
             print("Train losses (mean per epoch):", train_losses)
             self.assertLessEqual(train_losses[-1], train_losses[0])
+
+
+class GetClassificationDataloader(unittest.TestCase):
+    def setUp(self):
+        self.preprocessed_dataset: Dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
+        print(self.preprocessed_dataset)
+
+    def test_batch_shape(self):
+        batch_size = pipeline_args.eval_per_device_batch_size
+        dataloader = get_classification_dataloader(
+            self.preprocessed_dataset,
+            per_device_batch_size=batch_size,
+            shuffle=True,
+            prng_key=jax.random.PRNGKey(0),
+        )
+
+        num_real_entries = 0
+
+        for batch in dataloader:
+            chex.assert_equal_shape(
+                (batch.tokens["attention_mask"], batch.tokens["input_ids"])
+            )
+            chex.assert_equal_shape((batch.labels, batch.loss_mask))
+
+            chex.assert_axis_dimension(batch.labels, 1, batch_size)
+            chex.assert_axis_dimension(batch.labels, 0, num_devices)
+
+            chex.assert_axis_dimension(batch.tokens["attention_mask"], 0, num_devices)
+            chex.assert_axis_dimension(
+                batch.tokens["attention_mask"], 2, model_args.max_seq_length
+            )
+            chex.assert_axis_dimension(batch.tokens["attention_mask"], 1, batch_size)
+            num_real_entries += jnp.sum(batch.loss_mask)
+
+        self.assertEqual(num_real_entries, len(self.preprocessed_dataset))

@@ -17,7 +17,7 @@ from ..config import (
     DataConfig,
     ModelConfig,
     PipelineConfig,
-    BatchTokenKeys,
+    BatchTokenKeysWithLabels,
 )
 
 Dataset = datasets.arrow_dataset.Dataset
@@ -60,7 +60,7 @@ def get_dataloader(
 
 
 def _run_batch_inference_single_shard(
-    batch: Dict[BatchTokenKeys, Array],
+    batch: Dict[BatchTokenKeysWithLabels, Array],
     model: FlaxRobertaModel,
     model_args: ModelConfig,
     model_params: Dict,
@@ -93,7 +93,7 @@ _run_batch_inference_sharded = jax.pmap(
 
 
 def run_batch_inference(
-    batch_tokens: Dict[BatchTokenKeys, Array],
+    batch_tokens: Dict[BatchTokenKeysWithLabels, Array],
     model: FlaxRobertaModel,
     model_args: ModelConfig,
 ) -> Array:

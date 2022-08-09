@@ -20,7 +20,12 @@ from ..models.predict_model import (
     _compute_mean_embeddings,
 )
 
-from ..config import PipelineConfig, ModelConfig, BatchTokenKeys, PoolingStrategy
+from ..config import (
+    PipelineConfig,
+    ModelConfig,
+    BatchTokenKeysWithLabels,
+    PoolingStrategy,
+)
 
 Dataset = datasets.arrow_dataset.Dataset
 
@@ -54,7 +59,7 @@ class GetDataLoaderFromProcessedDataset(unittest.TestCase):
                 set(batch.tokens.keys()), set(["attention_mask", "input_ids", "label"])
             )
             for key in ["attention_mask", "input_ids"]:  # type: ignore
-                key: BatchTokenKeys
+                key: BatchTokenKeysWithLabels
                 value = batch.tokens[key]
                 chex.assert_axis_dimension(value, 0, jax.device_count())
                 chex.assert_axis_dimension(value, 1, eval_per_device_batch_size)

@@ -11,6 +11,7 @@ from transformers.modeling_flax_outputs import FlaxBaseModelOutputWithPooling
 from ..config import (
     BatchInfoKeys,
     BatchTokenKeys,
+    BatchTokenKeysWithLabels,
     MetricKeys,
     ModelConfig,
     PoolingStrategy,
@@ -22,7 +23,8 @@ Array = jax.numpy.ndarray
 TripletEligibilityMask = jax.numpy.ndarray
 Embeddings = jax.numpy.ndarray
 
-TokenizerOutputWithLabels = Dict[BatchTokenKeys, Array]
+TokenizerOutput = Dict[BatchTokenKeys, Array]
+TokenizerOutputWithLabels = Dict[BatchTokenKeysWithLabels, Array]
 ModelParams = optax.Params
 ReplicatedModelParams = optax.Params
 
@@ -42,7 +44,7 @@ class BatchWithEmbeddings(NamedTuple):
     """
 
     info: Dict[BatchInfoKeys, str]
-    tokens: Dict[BatchTokenKeys, Array]
+    tokens: Dict[BatchTokenKeysWithLabels, Array]
     embeddings: Array
 
 
@@ -55,6 +57,22 @@ class ShardedTrainStepOutput(NamedTuple):
     metrics: Dict[MetricKeys, Array]
     model_params: ModelParams
     optimizer_state: optax.OptState
+
+
+class LabelledBatch(NamedTuple):
+    """
+    Output of the dataloader for cross entropy loss.
+    """
+
+    # (batch_size, max_length)
+    tokens: TokenizerOutput
+    # (batch_size, )
+    labels: Array
+    # (batch_size, )
+    loss_mask: Array
+
+
+ShardedLabelledBatch = LabelledBatch
 
 
 TrainStepOutput = ShardedTrainStepOutput
