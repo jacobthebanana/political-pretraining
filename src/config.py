@@ -101,3 +101,5 @@ class PipelineConfig:
     num_epochs: int = field(default=1)
     save_every_num_batches: int = field(default=1000)
     eval_every_num_batches: int = field(default=10)
+    wandb_project: str = field(default="")
+    wandb_entity: str = field(default="")

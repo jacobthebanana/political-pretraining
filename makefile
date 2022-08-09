@@ -91,6 +91,8 @@ train:
 		--save_every_num_batches=${save_every_num_batches} \
 		--distance_function=${distance_function} \
 		--enable_masking=${enable_masking} \
+		--wandb_entity=${wandb_entity} \
+		--wandb_project=${wandb_project} \
 		--num_epochs=${num_epochs}
 
 train_cross_entropy:
@@ -104,6 +106,8 @@ train_cross_entropy:
 		--weight_decay=${weight_decay} \
 		--test_ratio=${test_ratio} \
 		--eval_every_num_batches=${eval_every_num_batches} \
+		--wandb_entity=${wandb_entity} \
+		--wandb_project=${wandb_project} \
 		--num_epochs=${num_epochs}
 
 # Generate average user embeddings on the given dataset.

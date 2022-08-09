@@ -415,8 +415,8 @@ def main():
     replicated_optimizer_state = replicate(optimizer_state)
 
     wandb.init(
-        project="political-triplet-tweets",
-        entity="jacobthebanana",
+        entity=pipeline_args.wandb_entity,
+        project=pipeline_args.wandb_project,
         name=datetime.datetime.now().isoformat() + "-" + gethostname(),
     )
     wandb.config.update(
