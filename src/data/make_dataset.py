@@ -146,7 +146,7 @@ def _concatenate_by_uid_on_shard(
         desc=f"Concatenating {shard.shard_index}/{shard.num_shards}",
     ):
         if shard.label_lookup:
-            user_label = shard.label_lookup.get("uid", -1)
+            user_label = shard.label_lookup.get(uid, -1)
         else:
             user_label = None
 
