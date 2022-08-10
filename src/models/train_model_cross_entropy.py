@@ -396,7 +396,7 @@ def main():
 
     num_labels = get_num_classes(data_args)
     model = FlaxRobertaForSequenceClassification.from_pretrained(
-        model_args.base_model_name, num_labels=num_labels
+        model_args.base_model_name, num_labels=num_labels, from_pt=True
     )  # type: ignore
     model: FlaxRobertaForSequenceClassification
     model_params = model.params
