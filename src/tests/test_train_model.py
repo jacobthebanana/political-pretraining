@@ -8,7 +8,7 @@ from dataclasses import replace
 import jax
 import chex
 import jax.numpy as jnp
-from flax.jax_utils import replicate
+from flax.jax_utils import replicate, unreplicate
 from flax.training.common_utils import shard
 import optax
 import datasets
@@ -18,6 +18,7 @@ from transformers import (
     AutoConfig,
     RobertaConfig,
     FlaxRobertaModel,
+    FlaxRobertaForSequenceClassification,
 )
 from tqdm.auto import tqdm
 
@@ -32,7 +33,12 @@ from ..models.train_model import (
     _train_step,
     _embed_mining_batch,
 )
-from ..models.train_model_cross_entropy import get_classification_dataloader
+from ..models.train_model_cross_entropy import (
+    get_classification_dataloader,
+    get_num_classes,
+    _train_step as _train_step_cross_entropy,
+    get_test_stats as get_test_stats_cross_entropy,
+)
 from ..models.model_utils import (
     TokenBatch,
     get_token_batch,
@@ -530,7 +536,6 @@ class StepTraining(unittest.TestCase):
 class GetClassificationDataloader(unittest.TestCase):
     def setUp(self):
         self.preprocessed_dataset: Dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
-        print(self.preprocessed_dataset)
 
     def test_batch_shape(self):
         batch_size = pipeline_args.eval_per_device_batch_size
@@ -560,3 +565,66 @@ class GetClassificationDataloader(unittest.TestCase):
             num_real_entries += jnp.sum(batch.loss_mask)
 
         self.assertEqual(num_real_entries, len(self.preprocessed_dataset))
+
+
+class StepCrossEntropyLossTrainLoop(unittest.TestCase):
+    def setUp(self):
+        self.preprocessed_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
+        self.dataloader = get_classification_dataloader(
+            self.preprocessed_dataset,  # type: ignore
+            per_device_batch_size=pipeline_args.train_per_device_batch_size,
+            shuffle=True,
+            prng_key=jax.random.PRNGKey(0),
+        )
+
+    def test_step_cross_entropy_train_function(self):
+        num_labels = get_num_classes(data_args)
+
+        model = FlaxRobertaForSequenceClassification.from_pretrained(
+            model_args.base_model_name, num_labels=num_labels
+        )  # type: ignore
+        model: FlaxRobertaForSequenceClassification
+        model_params = model.params
+
+        optimizer = optax.adamw(0.01, weight_decay=model_args.weight_decay)
+        # Initialize optimizer with original (non-replicated) model parameters
+        optimizer_state = optimizer.init(model_params)
+
+        replicated_model_params = replicate(model_params)
+        replicated_optimizer_state = replicate(optimizer_state)
+
+        batch = next(self.dataloader)
+        training_losses = []
+
+        for _ in tqdm(range(12), desc="Unit testing", ncols=80):
+            train_step_output = _train_step_cross_entropy(
+                batch,
+                model,
+                replicated_model_params,
+                optimizer,
+                replicated_optimizer_state,
+            )
+            replicated_model_params = train_step_output.model_params
+            replicated_optimizer_state = train_step_output.optimizer_state
+
+            metrics = unreplicate(train_step_output.metrics)
+            training_losses.append(metrics["training_loss"])
+
+        self.assertLess(training_losses[-1], training_losses[0])
+
+    def test_get_model_eval_metrics(self):
+        num_labels = get_num_classes(data_args)
+
+        model = FlaxRobertaForSequenceClassification.from_pretrained(
+            model_args.base_model_name, num_labels=num_labels
+        )  # type: ignore
+        model: FlaxRobertaForSequenceClassification
+        model_params = model.params
+
+        replicated_model_params = replicate(model_params)
+        test_stats = get_test_stats_cross_entropy(
+            self.preprocessed_dataset,  # type: ignore
+            pipeline_args.eval_per_device_batch_size,
+            model,
+            replicated_model_params,
+        )

@@ -164,6 +164,7 @@ def _loss_accuracy_fn_single_shard(
         optax.softmax_cross_entropy_with_integer_labels(logits, batch.labels)
         * batch.loss_mask
     )
+    batch_loss = jnp.mean(loss)
 
     predictions = jnp.argmax(logits, axis=-1)
     correct_entries = jnp.where(
@@ -171,9 +172,11 @@ def _loss_accuracy_fn_single_shard(
     )
     num_correct = jnp.sum(correct_entries)
     num_predictions = jnp.sum(batch.loss_mask)
-    accuracy = num_correct / num_predictions
 
-    return loss, accuracy
+    safe_num_predictions = jnp.where(num_predictions == 0, 1, num_predictions)
+    accuracy = num_correct / safe_num_predictions
+
+    return batch_loss, accuracy
 
 
 def _grad_accuracy_fn_single_shard(
@@ -459,7 +462,7 @@ def main():
             replicated_model_params = train_step_output.model_params
             replicated_optimizer_state = train_step_output.optimizer_state
 
-            train_stats = train_step_output.metrics
+            train_stats = unreplicate(train_step_output.metrics)
             stats = {**train_stats, **test_stats}
             wandb.log(stats)
 
