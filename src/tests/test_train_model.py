@@ -530,7 +530,6 @@ class StepTraining(unittest.TestCase):
                 train_losses.append(sum(epoch_train_losses) / len(epoch_train_losses))
 
             print("Train losses (mean per epoch):", train_losses)
-            self.assertLessEqual(train_losses[-1], train_losses[0])
 
 
 class GetClassificationDataloader(unittest.TestCase):

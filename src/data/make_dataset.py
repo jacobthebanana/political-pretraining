@@ -14,6 +14,7 @@ import multiprocessing
 import json
 from dataclasses import dataclass, field
 
+import numpy as np
 import datasets
 from datasets import (
     Dataset,
@@ -43,6 +44,14 @@ Dataset = datasets.arrow_dataset.Dataset
 @dataclass
 class _DATASET_SHARD_FOR_INDEXING:
     dataset_shard: datasets.arrow_dataset.Dataset
+    offset: int
+    num_shards: int
+
+
+@dataclass
+class _DATASET_SHARD_FOR_FILTERING:
+    dataset_shard: datasets.arrow_dataset.Dataset
+    uids_to_include: Iterable[UserID]
     offset: int
     num_shards: int
 
@@ -114,20 +123,83 @@ def load_labels(label_csv_path: str) -> LabelByUID:
     return output
 
 
-def filter_hf_dataset_by_uid(
-    dataset: Dataset, uid_set: Container[UserID], data_args: DataConfig
-) -> Dataset:
-    def filter_function(example: Dict[UserID, Any]) -> bool:
-        uid = example["uid"]
-        return uid in uid_set
+def _filter_hf_dataset_by_uid_shard(
+    shard: _DATASET_SHARD_FOR_FILTERING,
+) -> Optional[Dataset]:
+    dataset_shard = shard.dataset_shard
+    uids_to_include = shard.uids_to_include
+    output = {key: [] for key in dataset_shard.column_names}
 
-    return dataset.filter(filter_function, num_proc=data_args.num_procs)
+    for _, entry in enumerate(  # type: ignore
+        tqdm(
+            dataset_shard,
+            desc="Filtering ({:2d}/{:2d})".format(shard.offset, shard.num_shards),
+            ncols=80,
+        )
+    ):
+        entry: Dict[DatasetFeatures, Any]
+        uid = entry["uid"]
+        if uid in uids_to_include:
+            for key, value in entry.items():
+                output[key].append(value)
+
+    if len(output["uid"]) == 0:
+        return None
+
+    return Dataset.from_dict(output, features=dataset_shard.features)
+
+
+def filter_hf_dataset_by_uid(
+    dataset: Dataset, uid_set: Iterable[UserID], data_args: DataConfig
+) -> Dataset:
+    """
+    Keep only dataset entries where "uid" is in the given uid_set.
+
+    Args:
+     dataset: must include the "uid" (str) feature.
+     uid_set: supports membership "in".
+     data_args: specifies num_procs.
+
+    Returns:
+     Dataset.
+    """
+    num_shards = data_args.num_procs
+    shards: List[_DATASET_SHARD_FOR_FILTERING] = []
+    num_shards = data_args.num_procs
+    base_entry_index = 0
+
+    for shard_index in tqdm(
+        range(num_shards), ncols=80, desc="Creating filtering shards"
+    ):
+        dataset_shard = dataset.shard(num_shards=num_shards, index=shard_index)
+        shard = _DATASET_SHARD_FOR_FILTERING(
+            dataset_shard=dataset_shard,
+            offset=shard_index,
+            num_shards=num_shards,
+            uids_to_include=set(uid_set),
+        )
+        shards.append(shard)
+        base_entry_index += len(dataset_shard)
+
+    # with multiprocessing.Pool(1) as pool:
+    sharded_filtered_datasets: List[Optional[Dataset]] = list(
+        map(_filter_hf_dataset_by_uid_shard, shards)
+    )
+
+    shards_to_concatenated = []
+    for dataset in sharded_filtered_datasets:  # type: ignore
+        if dataset is not None:
+            shards_to_concatenated.append(dataset)
+
+    filtered_dataset = concatenate_datasets(shards_to_concatenated)  # type: ignore
+    filtered_dataset: Dataset
+    return filtered_dataset
 
 
 def split_dataset_by_uid(
     dataset: Dataset,
-    train_uid_container: Container[UserID],
-    test_uid_container: Container[UserID],
+    train_uid_container: Iterable[UserID],
+    test_uid_container: Iterable[UserID],
     data_args: DataConfig,
 ) -> dataset_dict.DatasetDict:
     """
@@ -239,7 +311,7 @@ def concatenate_by_uid(
     with multiprocessing.Pool(data_args.num_procs) as pool:
         sharded_datasets: List[Dataset] = pool.map(_concatenate_by_uid_on_shard, shards)
 
-    return concatenate_datasets(sharded_datasets)
+    return concatenate_datasets(sharded_datasets)  # type: ignore
 
 
 @overload
@@ -311,16 +383,16 @@ def label_dataset(
     Returns:
      DatasetDict: dataset with an additional "label" column.
     """
+    output = {}
+    for split_key, split in dataset.items():
+        label_column = np.zeros(len(split))
+        for index, entry in enumerate(tqdm(split, desc="labelling", ncols=80)):
+            uid = entry["uid"]
+            label_column[index] = labels.get(uid, -1)
 
-    def map_fn(examples: Dict[DatasetFeatures, List[str]]) -> Dict[str, List[int]]:
-        example_labels: List[int] = []
-        uids = examples["uid"]
-        for uid in uids:
-            example_labels.append(labels.get(uid, -1))
+        output[split_key] = split.add_column("label", label_column)
 
-        return {"label": example_labels}
-
-    return dataset.map(map_fn, batched=True, num_proc=data_args.num_procs)
+    return dataset_dict.DatasetDict(**output)
 
 
 def _create_uid_lookup_on_shard(
@@ -431,6 +503,8 @@ def main():
         split_raw_dataset: dataset_dict.DatasetDict = split_dataset_by_uid(
             raw_dataset, train_user_labels.keys(), test_user_labels.keys(), data_args
         )
+
+        print("Labelling")
         labelled_dataset = label_dataset(split_raw_dataset, full_user_labels, data_args)
         processed_dataset = preprocess_and_tokenize_dataset(
             labelled_dataset, model_args, data_args

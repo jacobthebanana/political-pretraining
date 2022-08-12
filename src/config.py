@@ -65,6 +65,10 @@ class DataConfig:
     source_format: str = field(default="csv")
     source_path: str = field(default="data/raw/tweets.csv")
     raw_label_path: str = field(default="data/raw/user_labels.csv")
+    raw_true_label_jsonl_path: str = field(default="data/raw/true_labels.jsonl")
+    use_true_label_for_test_split: bool = field(default=False)
+    processed_true_label_path: str = field(default="data/interim/true_labels.csv")
+    scree_name_to_uid_tsv_path: str = field(default="data/raw/screen_names.tsv")
     filtered_label_path: str = field(default="data/interim/filtered_user_labels.csv")
     train_filtered_label_path: str = field(
         default="data/interim/train_filtered_user_labels.csv"

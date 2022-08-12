@@ -17,7 +17,7 @@ from ..data.make_dataset import (
     label_dataset,
     _LOOKUP_DICT_SHARD_FOR_CONCATENATION,
 )
-from ..data.filter_label_file import shuffle_labels, split_labels
+from ..data.filter_label_file import shuffle_labels, split_labels, exclude_users
 from ..config import ModelConfig, DataConfig, DatasetFeatures
 
 Dataset = datasets.arrow_dataset.Dataset
@@ -201,3 +201,24 @@ class PreprocessAndTokenizeDataset(unittest.TestCase):
 
         for feature in ["input_ids", "attention_mask"]:
             self.assertIn(feature, self.preprocessed_dataset.features)
+
+
+class FilterLabels(unittest.TestCase):
+    def setUp(self):
+        example_full_labels = [
+            "0,username_a,7",
+            "1,username_a,11",
+            "0,username_b,5",
+        ]
+        example_excluded_labels = ["1,username_b,5", "0,username_a,6"]
+
+        self.filtered_examples = exclude_users(
+            example_full_labels, example_excluded_labels
+        )
+
+    def test_excluded_users(self):
+        self.assertEqual(len(self.filtered_examples), 2)
+
+        self.assertIn("0,username_a,7", self.filtered_examples)
+        self.assertIn("1,username_a,11", self.filtered_examples)
+        self.assertNotIn("0,username_b,5", self.filtered_examples)

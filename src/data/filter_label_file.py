@@ -57,6 +57,41 @@ def split_labels(
     return labels[:num_train_entries], labels[num_train_entries:]
 
 
+def _get_user_id(label_entry: str) -> str:
+    """
+    Return the user id (str)field of the given label entry.
+    """
+    fields = label_entry.split(",")
+    return fields[-1]
+
+
+def exclude_users(labels: List[str], labels_to_exclude: List[str]) -> List[str]:
+    """
+    Exclude users that are in the labels_to_exclude list of labels.
+
+    Args:
+     labels: list of full label file rows, excluding header row.
+     labels_to_exclude: list of label file rows with users to exclude,
+        also without the header row.
+
+    Returns:
+     List[str]: list of full label file rows minus ones that are excluded.
+    """
+    excluded_users = set()
+    for label_row in tqdm(labels_to_exclude, ncols=80, desc="Loading excluded users"):
+        user_id = _get_user_id(label_row)
+        excluded_users.add(user_id)
+
+    output: List[str] = []
+    for label_row in tqdm(labels, ncols=80, desc="Filtering users"):
+        user_id = _get_user_id(label_row)
+
+        if user_id not in excluded_users:
+            output.append(label_row)
+
+    return output
+
+
 def main():
     """
     Create new label csv file where the first field
@@ -102,8 +137,15 @@ def main():
     with open(data_args.filtered_label_path, "w") as filtered_label_file:
         filtered_label_file.writelines([raw_labels[0]] + filtered_labels)
 
-    shuffled_labels = shuffle_labels(filtered_labels, data_args)
-    train_labels, test_labels = split_labels(shuffled_labels, data_args)
+    if data_args.use_true_label_for_test_split:
+        with open(data_args.processed_true_label_path, "r") as true_label_file:
+            true_labels = true_label_file.readlines()[1:]
+
+        train_labels = exclude_users(filtered_labels, true_labels)
+        test_labels = true_labels
+    else:
+        shuffled_labels = shuffle_labels(filtered_labels, data_args)
+        train_labels, test_labels = split_labels(shuffled_labels, data_args)
 
     print(
         f"Writing training label file output; number of entries: {len(train_labels)}."
