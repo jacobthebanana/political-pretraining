@@ -37,7 +37,9 @@ generate_filtered_label_file:
 	python3 -m src.data.filter_label_file \
 		--raw_label_path="data/raw/user_labels.csv" \
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
-		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json"
+		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
+		--train_test_split_prng_seed=${train_test_split_prng_seed} \
+		--test_ratio=${test_ratio}
 
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
 preprocess_csv: generate_filtered_label_file
