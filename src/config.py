@@ -5,7 +5,7 @@ import multiprocessing
 
 from dataclasses import dataclass, field
 
-
+DatasetFeatures = Literal["uid", "tid", "input_ids", "attention_mask", "label"]
 BatchTokenKeys = Literal["input_ids", "attention_mask"]
 BatchTokenKeysWithLabels = Literal["input_ids", "attention_mask", "label"]
 BatchInfoKeys = Literal["uid", "tid"]
@@ -66,6 +66,12 @@ class DataConfig:
     source_path: str = field(default="data/raw/tweets.csv")
     raw_label_path: str = field(default="data/raw/user_labels.csv")
     filtered_label_path: str = field(default="data/interim/filtered_user_labels.csv")
+    train_filtered_label_path: str = field(
+        default="data/interim/train_filtered_user_labels.csv"
+    )
+    test_filtered_label_path: str = field(
+        default="data/interim/test_filtered_user_labels.csv"
+    )
     label_id_to_label_text_path: str = field(
         default="data/interim/label_id_to_label_text.json"
     )
@@ -89,6 +95,7 @@ class DataConfig:
         default=ConcatenationDelimiter.NEWLINE
     )
     test_ratio: float = field(default=0.2)
+    train_test_split_prng_seed: int = field(default=0)
 
 
 @dataclass

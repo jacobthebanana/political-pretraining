@@ -1,8 +1,9 @@
 import unittest
-from typing import Dict, Union
+from typing import Dict, Union, Any
 import json
 
 import datasets
+from datasets import load_from_disk
 
 from ..data.make_dataset import (
     create_raw_hf_dataset,
@@ -11,10 +12,13 @@ from ..data.make_dataset import (
     create_uid_lookup,
     _concatenate_by_uid_on_shard,
     concatenate_by_uid,
-    load_user_labels,
+    load_labels,
+    split_dataset_by_uid,
+    label_dataset,
     _LOOKUP_DICT_SHARD_FOR_CONCATENATION,
 )
-from ..config import ModelConfig, DataConfig
+from ..data.filter_label_file import shuffle_labels, split_labels
+from ..config import ModelConfig, DataConfig, DatasetFeatures
 
 Dataset = datasets.arrow_dataset.Dataset
 
@@ -62,7 +66,7 @@ class CreateDatasetFromRawText(unittest.TestCase):
 
 class LoadUserLabels(unittest.TestCase):
     def setUp(self):
-        self.user_labels = load_user_labels(data_args)
+        self.user_labels = load_labels(data_args.train_filtered_label_path)
 
     def test_user_label_data_types(self):
         for key, value in self.user_labels.items():
@@ -93,6 +97,66 @@ class FilterDatasetByUID(unittest.TestCase):
         self.assertEqual(len(self.filtered_dataset), 181)
         self.assertIn("1180684225097289729", self.filtered_dataset["uid"])
         self.assertNotIn("0", self.filtered_dataset["uid"])
+
+
+class SplitDatasetByUID(unittest.TestCase):
+    def setUp(self):
+        self.train_lookup = load_labels(data_args.train_filtered_label_path)
+        self.test_lookup = load_labels(data_args.test_filtered_label_path)
+        self.dataset: Dataset = create_raw_hf_dataset(data_args)
+
+        self.split_dataset = split_dataset_by_uid(
+            self.dataset, self.train_lookup.keys(), self.test_lookup.keys(), data_args
+        )
+
+    def test_split_dataset_key_and_members(self):
+        for split_key, split_uids in [
+            ("train", self.train_lookup),
+            ("test", self.test_lookup),
+        ]:
+            self.assertIn(split_key, self.split_dataset.keys())
+            dataset_split = self.split_dataset[split_key]
+
+            for entry in dataset_split:  # type: ignore
+                entry: Dict[DatasetFeatures, Any]
+                uid = entry["uid"]
+                self.assertIn(uid, split_uids)
+
+
+class LabelDataset(unittest.TestCase):
+    def setUp(self):
+        self.full_labels = load_labels(data_args.filtered_label_path)
+        self.split_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
+        self.split_dataset: datasets.dataset_dict.DatasetDict
+
+    def test_label_dataset(self):
+        labelled_dataset = label_dataset(
+            self.split_dataset, self.full_labels, data_args
+        )
+        for entry in labelled_dataset:
+            entry: Dict[DatasetFeatures, Any]
+            label = entry["label"]
+            uid = entry["uid"]
+
+            reference_label = self.full_labels.get(uid)
+            self.assertEqual(label, reference_label)
+
+
+class ShuffleAndSplitLabels(unittest.TestCase):
+    def setUp(self):
+        with open(data_args.filtered_label_path, "r") as filtered_label_file:
+            self.filtered_labels = filtered_label_file.readlines()
+
+        self.shuffled_labels = shuffle_labels(self.filtered_labels, data_args)
+        self.train_labels, self.test_labels = split_labels(
+            self.filtered_labels, data_args
+        )
+
+    def test_output_length(self):
+        self.assertEqual(len(self.shuffled_labels), len(self.filtered_labels))
+        self.assertEqual(
+            len(self.train_labels) + len(self.test_labels), len(self.filtered_labels)
+        )
 
 
 class ConcatenateByUID(unittest.TestCase):

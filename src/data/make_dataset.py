@@ -7,6 +7,7 @@ from typing import (
     Iterable,
     Union,
     Optional,
+    overload,
 )
 from collections import defaultdict
 import multiprocessing
@@ -21,6 +22,7 @@ from datasets import (
     concatenate_datasets,
     Value,
     Features,
+    dataset_dict,
 )
 from transformers import AutoTokenizer, HfArgumentParser
 from tqdm.auto import tqdm
@@ -28,6 +30,7 @@ from tqdm.auto import tqdm
 from ..config import (
     ModelConfig,
     DataConfig,
+    DatasetFeatures,
     LookupByUID,
     LabelByUID,
     UserID,
@@ -52,7 +55,6 @@ class _LOOKUP_DICT_SHARD_FOR_CONCATENATION:
     data_args: DataConfig
     shard_index: int
     num_shards: int
-    label_lookup: Optional[LabelByUID] = field(default=None)
 
 
 def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
@@ -89,14 +91,14 @@ def create_raw_hf_dataset(data_args: DataConfig) -> Dataset:
     return sharded_dataset
 
 
-def load_user_labels(data_args: DataConfig) -> LabelByUID:
+def load_labels(label_csv_path: str) -> LabelByUID:
     """
     Load user labels from the *filtered* user label csv.
 
     Args:
-     data_args: specifies path to the filtered user label csv.
+     label_csv_path: path to the label file in csv format.
     """
-    with open(data_args.filtered_label_path, "r") as filtered_label_file:
+    with open(label_csv_path, "r") as filtered_label_file:
         filtered_labels = filtered_label_file.readlines()
 
     output: Dict[UserID, int] = {}
@@ -113,13 +115,37 @@ def load_user_labels(data_args: DataConfig) -> LabelByUID:
 
 
 def filter_hf_dataset_by_uid(
-    dataset: Dataset, uid_set: Container[str], data_args: DataConfig
+    dataset: Dataset, uid_set: Container[UserID], data_args: DataConfig
 ) -> Dataset:
-    def filter_function(example: Dict[str, Any]) -> bool:
+    def filter_function(example: Dict[UserID, Any]) -> bool:
         uid = example["uid"]
         return uid in uid_set
 
     return dataset.filter(filter_function, num_proc=data_args.num_procs)
+
+
+def split_dataset_by_uid(
+    dataset: Dataset,
+    train_uid_container: Container[UserID],
+    test_uid_container: Container[UserID],
+    data_args: DataConfig,
+) -> dataset_dict.DatasetDict:
+    """
+    Apply train-test split to dataset based on uid lists.
+
+    Args:
+     dataset: HuggingFace dataset.
+     train_uid_container: uid container supporting the "in" lookup feature.
+     test_uid_container: uid container supporting the "in" lookup feature.
+     data_args: specifies num_procs.
+
+    Returns:
+     DatasetDict: with "train" and "test" as keys.
+    """
+    train_dataset = filter_hf_dataset_by_uid(dataset, train_uid_container, data_args)
+    test_dataset = filter_hf_dataset_by_uid(dataset, test_uid_container, data_args)
+
+    return dataset_dict.DatasetDict(train=train_dataset, test=test_dataset)
 
 
 def _concatenate_by_uid_on_shard(
@@ -127,13 +153,12 @@ def _concatenate_by_uid_on_shard(
 ) -> Dataset:
     tokenizer = AutoTokenizer.from_pretrained(shard.model_args.base_model_name)
 
-    output = {"uid": [], "tid": [], "text": [], "label": []}
+    output = {"uid": [], "tid": [], "text": []}
     features = Features(
         {
             "uid": Value(dtype="string"),
             "tid": Value(dtype="string"),
             "text": Value(dtype="string"),
-            "label": Value(dtype="int8"),
         }
     )
     delimiter = CONCATENATION_DELIMITER_MAP.get(
@@ -145,11 +170,6 @@ def _concatenate_by_uid_on_shard(
         total=len(shard.lookup_shard.keys()),
         desc=f"Concatenating {shard.shard_index}/{shard.num_shards}",
     ):
-        if shard.label_lookup:
-            user_label = shard.label_lookup.get(uid, -1)
-        else:
-            user_label = None
-
         text_buffer = ""
         texts: Iterable[Union[str, None]] = shard.dataset[indices]["text"]
         leading_tid: str = shard.dataset[indices]["tid"][0]
@@ -162,7 +182,6 @@ def _concatenate_by_uid_on_shard(
                     output["uid"].append(uid)
                     output["tid"].append(leading_tid)
                     output["text"].append(text_buffer)
-                    output["label"].extend([user_label])
                     text_buffer = ""
                 else:
                     text_buffer += user_text
@@ -170,7 +189,6 @@ def _concatenate_by_uid_on_shard(
         output["uid"].append(uid)
         output["tid"].append(leading_tid)
         output["text"].append(text_buffer)
-        output["label"].extend([user_label])
 
     return Dataset.from_dict(output, features=features)
 
@@ -180,7 +198,6 @@ def concatenate_by_uid(
     lookup_by_uid: LookupByUID,
     model_args: ModelConfig,
     data_args: DataConfig,
-    label_lookup: Optional[LabelByUID] = None,
 ) -> Dataset:
     """
     Given a raw text dataset, concatenate sentences from each uid,
@@ -195,7 +212,6 @@ def concatenate_by_uid(
      lookup_by_uid: uid-to-index map. See `create_uid_lookup`.
      model_args: specifies max_seq_length.
      data_args: specifies num_procs.
-     label_lookup: Optional; user-level labels to include in dataset.
     """
     uids = list(lookup_by_uid.keys())
     num_shards = data_args.num_procs
@@ -217,7 +233,6 @@ def concatenate_by_uid(
             data_args,
             shard_index=shard_index,
             num_shards=num_shards,
-            label_lookup=label_lookup,
         )
         shards.append(lookup_shard)
 
@@ -227,11 +242,25 @@ def concatenate_by_uid(
     return concatenate_datasets(sharded_datasets)
 
 
+@overload
 def preprocess_and_tokenize_dataset(
     dataset: datasets.arrow_dataset.Dataset,
     model_args: ModelConfig,
     data_args: DataConfig,
 ) -> datasets.arrow_dataset.Dataset:
+    ...
+
+
+@overload
+def preprocess_and_tokenize_dataset(
+    dataset: datasets.dataset_dict.DatasetDict,
+    model_args: ModelConfig,
+    data_args: DataConfig,
+) -> datasets.dataset_dict.DatasetDict:
+    ...
+
+
+def preprocess_and_tokenize_dataset(dataset, model_args, data_args):
     """
     Preprocess and tokenize the raw dataset
 
@@ -262,6 +291,36 @@ def preprocess_and_tokenize_dataset(
         num_proc=data_args.num_procs,
     )
     return processed_dataset
+
+
+def label_dataset(
+    dataset: dataset_dict.DatasetDict,
+    labels: LabelByUID,
+    data_args: DataConfig,
+) -> dataset_dict.DatasetDict:
+    """
+    Add labels to a HuggingFace dataset.
+    Users are matched by the "uid" feature.
+    Missing users would be labelled (-1).
+
+    Args:
+     dataset: Input dataset. Must include the "uid" feature.
+     labels: User labels.
+     data_args: specifies num_procs.
+
+    Returns:
+     DatasetDict: dataset with an additional "label" column.
+    """
+
+    def map_fn(examples: Dict[DatasetFeatures, List[str]]) -> Dict[str, List[int]]:
+        example_labels: List[int] = []
+        uids = examples["uid"]
+        for uid in uids:
+            example_labels.append(labels.get(uid, -1))
+
+        return {"label": example_labels}
+
+    return dataset.map(map_fn, batched=True, num_proc=data_args.num_procs)
 
 
 def _create_uid_lookup_on_shard(
@@ -352,48 +411,40 @@ def main():
     model_args: ModelConfig
     data_args: DataConfig
 
+    full_user_labels = load_labels(data_args.filtered_label_path)
+    train_user_labels = load_labels(data_args.train_filtered_label_path)
+    test_user_labels = load_labels(data_args.test_filtered_label_path)
+
     if data_args.rerun_tokenization:
         raw_dataset = create_raw_hf_dataset(data_args)
-
-        if data_args.require_labels or (data_args.filtered_label_path != ""):
-            label_lookup = load_user_labels(data_args)
-        else:
-            label_lookup = None
-
-        if data_args.require_labels:
-            assert label_lookup is not None, "Labels are required for filtering."
-            print("Unfiltered", raw_dataset)
-            raw_dataset = filter_hf_dataset_by_uid(
-                raw_dataset, label_lookup.keys(), data_args
-            )
-            print("Filtered", raw_dataset)
 
         if data_args.per_user_concatenation:
             dataset_for_indexing = raw_dataset.remove_columns(["text"])
             lookup_by_uid = create_uid_lookup(dataset_for_indexing, data_args)
-            raw_dataset_concatenated = concatenate_by_uid(
+            raw_dataset = concatenate_by_uid(
                 raw_dataset,
                 lookup_by_uid,
                 model_args,
                 data_args,
-                label_lookup=label_lookup,
-            )
-            processed_dataset = preprocess_and_tokenize_dataset(
-                raw_dataset_concatenated, model_args, data_args
             )
 
-        else:
-            processed_dataset = preprocess_and_tokenize_dataset(
-                raw_dataset, model_args, data_args
-            )
+        split_raw_dataset: dataset_dict.DatasetDict = split_dataset_by_uid(
+            raw_dataset, train_user_labels.keys(), test_user_labels.keys(), data_args
+        )
+        labelled_dataset = label_dataset(split_raw_dataset, full_user_labels, data_args)
+        processed_dataset = preprocess_and_tokenize_dataset(
+            labelled_dataset, model_args, data_args
+        )
+
         processed_dataset.save_to_disk(data_args.processed_dataset_path)
         print(processed_dataset)
     else:
-        processed_dataset: Dataset = load_from_disk(
+        processed_dataset: dataset_dict.DatasetDict = load_from_disk(
             data_args.processed_dataset_path
         )  # type: ignore
+
     if data_args.enable_indexing:
-        dataset_for_indexing = processed_dataset.remove_columns(
+        dataset_for_indexing = processed_dataset["train"].remove_columns(
             ["text", "input_ids", "attention_mask"]
         )
         uid_lookup = create_uid_lookup(dataset_for_indexing, data_args)

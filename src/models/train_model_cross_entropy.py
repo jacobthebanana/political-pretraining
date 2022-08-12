@@ -387,12 +387,9 @@ def main():
     data_args: DataConfig
     pipeline_args: PipelineConfig
 
-    processed_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
-    processed_dataset: Dataset
-
-    split_dataset: DatasetDict = processed_dataset.train_test_split(
-        test_size=data_args.test_ratio
-    )
+    split_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
+    assert isinstance(split_dataset, DatasetDict)
+    split_dataset: DatasetDict
 
     num_labels = get_num_classes(data_args)
     model = FlaxRobertaForSequenceClassification.from_pretrained(
