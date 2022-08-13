@@ -90,14 +90,16 @@ generate_filtered_label_file_with_test_labels: select_test_uids
 		--raw_label_path="data/raw/user_labels.csv" \
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
 		--use_true_label_for_test_split=1 \
-		--processed_true_label_path="data/interim/test_labels.csv" \
+		--processed_true_label_path="data/interim/true_labels.csv" \
 		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
 		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/test_labels.csv" \
 		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--validation_ratio=${validation_ratio}
 
+replace_validation_labels_with_true_labels:
+	cp data/interim/true_labels.csv data/interim/validation_filtered_user_labels.csv
 
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
 preprocess_csv:
@@ -136,6 +138,11 @@ preprocess_json:
 		--per_user_concatenation=${per_user_concatenation} \
 		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
+
+setup_report_data: generate_filtered_label_file_with_test_labels \
+	generate_filtered_label_file_with_true_labels \
+	replace_validation_labels_with_true_labels \
+	preprocess_json
 
 show_dataset_stats: 
 	python3 -m src.data.print_dataset_stats \
