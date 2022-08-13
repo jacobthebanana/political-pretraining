@@ -340,7 +340,10 @@ def get_test_stats(
     stats: Dict[MetricKeys, List[float]] = defaultdict(list)
 
     for batch in tqdm(
-        test_dataloader, total=num_test_batches, ncols=80, desc="Evaluating"
+        test_dataloader,
+        total=num_test_batches,
+        ncols=80,
+        desc=f"Evaluating {metric_prefix}",
     ):
         batch_stats = _eval_step(batch, model, replicated_model_params, metric_prefix)
         for key, value in batch_stats.items():
@@ -453,7 +456,7 @@ def main():
                             model,
                             replicated_model_params,
                             metric_prefix=eval_split_key,
-                        )
+                        ),
                     )
 
             else:

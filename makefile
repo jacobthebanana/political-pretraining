@@ -50,10 +50,12 @@ merge_label_files:
 		--processed_true_label_path="data/interim/true_labels.csv"
 
 
-validate_test_uids: download_true_labels download_test_uids merge_label_files
-	python3 -m src.data.verify_label_availability \
+# Verify that all test labels are available as true labels.
+select_test_uids: download_true_labels download_test_uids merge_label_files
+	python3 -m src.data.slice_labels \
 		"data/raw/test_uids.csv" \
-		"data/interim/true_labels.csv"
+		"data/interim/true_labels.csv" \
+		"data/interim/test_labels.csv"
 
 # Generate filtered label file where classifier label must be non-empty.
 generate_filtered_label_file:
@@ -80,8 +82,22 @@ generate_filtered_label_file_with_true_labels:
 		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
 		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
-		--test_ratio=${test_ratio} \
 		--validation_ratio=${validation_ratio}
+
+# Generate filtered label file with test true labels.
+generate_filtered_label_file_with_test_labels: select_test_uids
+	python3 -m src.data.filter_label_file \
+		--raw_label_path="data/raw/user_labels.csv" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--use_true_label_for_test_split=1 \
+		--processed_true_label_path="data/interim/test_labels.csv" \
+		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
+		--train_test_split_prng_seed=${train_test_split_prng_seed} \
+		--validation_ratio=${validation_ratio}
+
 
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
 preprocess_csv:
