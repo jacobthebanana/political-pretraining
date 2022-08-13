@@ -120,7 +120,7 @@ def get_classification_dataloader(
         )
 
         # (num_trailing_examples, )
-        labels = jnp.array(trailing_examples["label"])
+        labels = jnp.array(trailing_examples["label"], dtype=int)
         labels_padded = jnp.pad(
             labels, ((0, padding_length),), mode="constant", constant_values=-1
         )
