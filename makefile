@@ -60,9 +60,13 @@ generate_filtered_label_file:
 	python3 -m src.data.filter_label_file \
 		--raw_label_path="data/raw/user_labels.csv" \
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
 		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
-		--test_ratio=${test_ratio}
+		--test_ratio=${test_ratio} \
+		--validation_ratio=${validation_ratio}
 
 # Generate filtered label file with true labels as test set.
 generate_filtered_label_file_with_true_labels:
@@ -72,8 +76,12 @@ generate_filtered_label_file_with_true_labels:
 		--use_true_label_for_test_split=1 \
 		--processed_true_label_path="data/interim/true_labels.csv" \
 		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
 		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
-		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json"
+		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
+		--train_test_split_prng_seed=${train_test_split_prng_seed} \
+		--test_ratio=${test_ratio} \
+		--validation_ratio=${validation_ratio}
 
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
 preprocess_csv:
@@ -102,6 +110,7 @@ preprocess_json:
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
 		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
 		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
@@ -192,6 +201,7 @@ preprocess_test_json_dataset:
 		--source_path="data/testing/raw/tweets.json" \
 		--source_format=json \
 		--per_user_concatenation=1 \
+		--enable_indexing=1 \
 		--processed_dataset_path="data/testing/processed/tweets" \
 		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" 
 

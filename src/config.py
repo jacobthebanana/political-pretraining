@@ -73,6 +73,9 @@ class DataConfig:
     train_filtered_label_path: str = field(
         default="data/interim/train_filtered_user_labels.csv"
     )
+    validation_filtered_label_path: str = field(
+        default="data/interim/validation_filtered_user_labels.csv"
+    )
     test_filtered_label_path: str = field(
         default="data/interim/test_filtered_user_labels.csv"
     )
@@ -99,6 +102,7 @@ class DataConfig:
         default=ConcatenationDelimiter.NEWLINE
     )
     test_ratio: float = field(default=0.2)
+    validation_ratio: float = field(default=0.2)
     train_test_split_prng_seed: int = field(default=0)
 
 

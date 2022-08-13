@@ -102,16 +102,22 @@ class FilterDatasetByUID(unittest.TestCase):
 class SplitDatasetByUID(unittest.TestCase):
     def setUp(self):
         self.train_lookup = load_labels(data_args.train_filtered_label_path)
+        self.validation_lookup = load_labels(data_args.validation_filtered_label_path)
         self.test_lookup = load_labels(data_args.test_filtered_label_path)
         self.dataset: Dataset = create_raw_hf_dataset(data_args)
 
         self.split_dataset = split_dataset_by_uid(
-            self.dataset, self.train_lookup.keys(), self.test_lookup.keys(), data_args
+            self.dataset,
+            self.train_lookup.keys(),
+            self.validation_lookup.keys(),
+            self.test_lookup.keys(),
+            data_args,
         )
 
     def test_split_dataset_key_and_members(self):
         for split_key, split_uids in [
             ("train", self.train_lookup),
+            ("validation", self.train_lookup),
             ("test", self.test_lookup),
         ]:
             self.assertIn(split_key, self.split_dataset.keys())
@@ -131,7 +137,7 @@ class LabelDataset(unittest.TestCase):
 
     def test_label_dataset(self):
         labelled_dataset = label_dataset(
-            self.split_dataset, self.full_labels, data_args
+            self.split_dataset, self.full_labels
         )
         for entry in labelled_dataset:
             entry: Dict[DatasetFeatures, Any]
@@ -149,7 +155,7 @@ class ShuffleAndSplitLabels(unittest.TestCase):
 
         self.shuffled_labels = shuffle_labels(self.filtered_labels, data_args)
         self.train_labels, self.test_labels = split_labels(
-            self.filtered_labels, data_args
+            self.filtered_labels, data_args.test_ratio
         )
 
     def test_output_length(self):

@@ -1,8 +1,8 @@
 """
 Utilities for filtering out user_label entries where 
-classifier_label is unavailable.
+classifier_label is unavailable and splitting labelled data. 
 """
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Tuple
 import json
 
 import numpy as np
@@ -37,27 +37,25 @@ def shuffle_labels(labels: List[str], data_args: DataConfig) -> List[str]:
     return list(shuffled_labels)
 
 
-def split_labels(
-    labels: List[str], data_args: DataConfig
-) -> Tuple[List[str], List[str]]:
+def split_labels(labels: List[str], test_ratio: float) -> Tuple[List[str], List[str]]:
     """
     Split labels into training set and testing set.
 
     Args:
      labels: list of label file rows, excluding header row.
-     data_args: specifies test_ratio.
+     test_ratio: specifies ratio of the test split.
 
     Returns:
      Tuple[List[str], List[str]]: train_rows, test_rows.
     """
     num_entries = len(labels)
-    num_test_entries = int(num_entries * data_args.test_ratio)
+    num_test_entries = int(num_entries * test_ratio)
     num_train_entries = num_entries - num_test_entries
 
     return labels[:num_train_entries], labels[num_train_entries:]
 
 
-def _get_user_id(label_entry: str) -> str:
+def get_user_id(label_entry: str) -> str:
     """
     Return the user id (str)field of the given label entry.
     """
@@ -79,12 +77,12 @@ def exclude_users(labels: List[str], labels_to_exclude: List[str]) -> List[str]:
     """
     excluded_users = set()
     for label_row in tqdm(labels_to_exclude, ncols=80, desc="Loading excluded users"):
-        user_id = _get_user_id(label_row)
+        user_id = get_user_id(label_row)
         excluded_users.add(user_id)
 
     output: List[str] = []
     for label_row in tqdm(labels, ncols=80, desc="Filtering users"):
-        user_id = _get_user_id(label_row)
+        user_id = get_user_id(label_row)
 
         if user_id not in excluded_users:
             output.append(label_row)
@@ -105,6 +103,8 @@ def main():
      data_args.test_filtered_label_path: path to output test label csv.
      data_args.test_ratio: test ratio.
      data_args.split_prng_seed: JAX Threefry PRNG key seed.
+     data_args.use_true_label_for_test_split: If set, use true labels for test
+        and split the non-true label users into train and validation.
 
     """
     parser = HfArgumentParser((DataConfig,))
@@ -141,17 +141,35 @@ def main():
         with open(data_args.processed_true_label_path, "r") as true_label_file:
             true_labels = true_label_file.readlines()[1:]
 
-        train_labels = exclude_users(filtered_labels, true_labels)
+        train_val_labels = exclude_users(filtered_labels, true_labels)
+        train_labels, validation_labels = split_labels(
+            train_val_labels, data_args.validation_ratio
+        )
         test_labels = true_labels
     else:
+        test_ratio = data_args.test_ratio
+        
+        # Ensure that validation ratio refers to the fraction of the entire data set.
+        validation_ratio = data_args.validation_ratio / (1 - test_ratio)
+
         shuffled_labels = shuffle_labels(filtered_labels, data_args)
-        train_labels, test_labels = split_labels(shuffled_labels, data_args)
+        train_val_labels, test_labels = split_labels(shuffled_labels, test_ratio)
+        train_labels, validation_labels = split_labels(
+            train_val_labels, validation_ratio
+        )
 
     print(
         f"Writing training label file output; number of entries: {len(train_labels)}."
     )
     with open(data_args.train_filtered_label_path, "w") as train_label_file:
         train_label_file.writelines([raw_labels[0]] + train_labels)
+
+    print(
+        "Writing validation label file output; number of entries:",
+        f"{len(validation_labels)}.",
+    )
+    with open(data_args.validation_filtered_label_path, "w") as validation_label_file:
+        validation_label_file.writelines([raw_labels[0]] + validation_labels)
 
     print(f"Writing testing label file output; number of entries: {len(test_labels)}.")
     with open(data_args.test_filtered_label_path, "w") as test_label_file:

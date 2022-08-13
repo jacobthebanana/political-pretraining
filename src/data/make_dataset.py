@@ -181,7 +181,6 @@ def filter_hf_dataset_by_uid(
         shards.append(shard)
         base_entry_index += len(dataset_shard)
 
-    # with multiprocessing.Pool(1) as pool:
     sharded_filtered_datasets: List[Optional[Dataset]] = list(
         map(_filter_hf_dataset_by_uid_shard, shards)
     )
@@ -199,6 +198,7 @@ def filter_hf_dataset_by_uid(
 def split_dataset_by_uid(
     dataset: Dataset,
     train_uid_container: Iterable[UserID],
+    validation_uid_container: Iterable[UserID],
     test_uid_container: Iterable[UserID],
     data_args: DataConfig,
 ) -> dataset_dict.DatasetDict:
@@ -208,6 +208,7 @@ def split_dataset_by_uid(
     Args:
      dataset: HuggingFace dataset.
      train_uid_container: uid container supporting the "in" lookup feature.
+     validation_uid_container: uid container supporting the "in" lookup feature.
      test_uid_container: uid container supporting the "in" lookup feature.
      data_args: specifies num_procs.
 
@@ -215,9 +216,14 @@ def split_dataset_by_uid(
      DatasetDict: with "train" and "test" as keys.
     """
     train_dataset = filter_hf_dataset_by_uid(dataset, train_uid_container, data_args)
+    validation_dataset = filter_hf_dataset_by_uid(
+        dataset, validation_uid_container, data_args
+    )
     test_dataset = filter_hf_dataset_by_uid(dataset, test_uid_container, data_args)
 
-    return dataset_dict.DatasetDict(train=train_dataset, test=test_dataset)
+    return dataset_dict.DatasetDict(
+        train=train_dataset, validation=validation_dataset, test=test_dataset
+    )
 
 
 def _concatenate_by_uid_on_shard(
@@ -368,17 +374,18 @@ def preprocess_and_tokenize_dataset(dataset, model_args, data_args):
 def label_dataset(
     dataset: dataset_dict.DatasetDict,
     labels: LabelByUID,
-    data_args: DataConfig,
 ) -> dataset_dict.DatasetDict:
     """
     Add labels to a HuggingFace dataset.
     Users are matched by the "uid" feature.
     Missing users would be labelled (-1).
 
+    Each shard is saved to a temporary dataset to reduce
+    memory footprint.
+
     Args:
      dataset: Input dataset. Must include the "uid" feature.
      labels: User labels.
-     data_args: specifies num_procs.
 
     Returns:
      DatasetDict: dataset with an additional "label" column.
@@ -388,7 +395,7 @@ def label_dataset(
         label_column = np.zeros(len(split))
         for index, entry in enumerate(tqdm(split, desc="labelling", ncols=80)):
             uid = entry["uid"]
-            label_column[index] = labels.get(uid, -1)
+            label_column[index] = int(labels.get(uid, -1))
 
         output[split_key] = split.add_column("label", label_column)
 
@@ -459,7 +466,7 @@ def create_uid_lookup(
      Dictionary mapping uid strings to arrays of dataset indices.
     """
     shards: List[_DATASET_SHARD_FOR_INDEXING] = []
-    num_shards = data_args.num_procs
+    num_shards = min(data_args.num_procs, len(dataset))
     base_entry_index = 0
     for shard_index in tqdm(range(num_shards), desc="Creating shards"):
         dataset_shard = dataset.shard(num_shards=num_shards, index=shard_index)
@@ -485,6 +492,7 @@ def main():
 
     full_user_labels = load_labels(data_args.filtered_label_path)
     train_user_labels = load_labels(data_args.train_filtered_label_path)
+    validation_user_labels = load_labels(data_args.validation_filtered_label_path)
     test_user_labels = load_labels(data_args.test_filtered_label_path)
 
     if data_args.rerun_tokenization:
@@ -501,11 +509,15 @@ def main():
             )
 
         split_raw_dataset: dataset_dict.DatasetDict = split_dataset_by_uid(
-            raw_dataset, train_user_labels.keys(), test_user_labels.keys(), data_args
+            raw_dataset,
+            train_user_labels.keys(),
+            validation_user_labels.keys(),
+            test_user_labels.keys(),
+            data_args,
         )
 
         print("Labelling")
-        labelled_dataset = label_dataset(split_raw_dataset, full_user_labels, data_args)
+        labelled_dataset = label_dataset(split_raw_dataset, full_user_labels)
         processed_dataset = preprocess_and_tokenize_dataset(
             labelled_dataset, model_args, data_args
         )
