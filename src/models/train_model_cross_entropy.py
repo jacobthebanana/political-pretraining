@@ -94,7 +94,6 @@ def get_classification_dataloader(
         yield sharded_batch
 
     if num_trailing_examples >= 1:
-        del examples
         trailing_indices = indices[num_divisible_examples:]
         trailing_examples: Dict[BatchTokenKeysWithLabels, Array] = dataset[
             trailing_indices
@@ -196,7 +195,8 @@ def _eval_step_single_shard(
     batch: LabelledBatch,
     model: FlaxRobertaForSequenceClassification,
     model_params: Dict,
-) -> Dict[MetricKeys, Array]:
+    metric_prefix: str,
+) -> Dict[str, Array]:
     """
     Get eval stats on the given batch.
     Applied pmean to the stats.
@@ -205,16 +205,17 @@ def _eval_step_single_shard(
      batch: non-sharded data.
      model: abstract Flax model.
      model_params: non-replicated weights for the Flax model.
+     metric_prefix: string to add in front of each eval metric.
 
     Returns:
-     Dict[MetricKeys, Array]: non-replicated model stats.
+     Dict[str, Array]: non-replicated model stats.
     """
     loss, accuracy = _loss_accuracy_fn_single_shard(batch, model, model_params)
     loss, accuracy = jax.lax.pmean((loss, accuracy), axis_name="data")
 
-    metrics: Dict[MetricKeys, Array] = {
-        "eval_loss": loss,
-        "eval_accuracy": accuracy,
+    metrics: Dict[str, Array] = {
+        metric_prefix + "_loss": loss,
+        metric_prefix + "_accuracy": accuracy,
     }
 
     return metrics
@@ -224,6 +225,7 @@ def _eval_step(
     batch: ShardedLabelledBatch,
     model: FlaxRobertaForSequenceClassification,
     model_params: ReplicatedModelParams,
+    metric_prefix: str,
 ) -> Dict[MetricKeys, Array]:
     """
     Evaluation step with pmean on the stats.
@@ -233,7 +235,7 @@ def _eval_step(
 
 
 _eval_step = jax.pmap(
-    _eval_step_single_shard, axis_name="data", static_broadcasted_argnums=(1,)
+    _eval_step_single_shard, axis_name="data", static_broadcasted_argnums=(1, 3)
 )
 
 
@@ -325,6 +327,7 @@ def get_test_stats(
     test_batch_size: int,
     model: FlaxRobertaForSequenceClassification,
     replicated_model_params: ReplicatedModelParams,
+    metric_prefix: str = "eval",
 ) -> Dict[MetricKeys, float]:
     """
     Returns test stats.
@@ -339,7 +342,9 @@ def get_test_stats(
     for batch in tqdm(
         test_dataloader, total=num_test_batches, ncols=80, desc="Evaluating"
     ):
-        batch_stats = _eval_step(batch, model, replicated_model_params)
+        batch_stats = _eval_step(
+            batch, model, replicated_model_params, metric_prefix
+        )
         for key, value in batch_stats.items():
             unreplicated_value: float = unreplicate(value)
             stats[key].append(unreplicated_value)
@@ -439,15 +444,21 @@ def main():
             tqdm(train_dataloader, ncols=80, total=num_train_batches_per_epoch)
         ):
             if batch_index % pipeline_args.eval_every_num_batches == 0:
-                test_dataset = split_dataset["test"]
-                test_stats = get_test_stats(
-                    test_dataset,
-                    pipeline_args.eval_per_device_batch_size,
-                    model,
-                    replicated_model_params,
-                )
+                eval_stats = {}
+                for eval_split_key in ("validation", "test"):
+                    eval_dataset = split_dataset[eval_split_key]
+                    eval_stats = dict(
+                        **eval_stats,
+                        **get_test_stats(
+                            eval_dataset,
+                            pipeline_args.eval_per_device_batch_size,
+                            model,
+                            replicated_model_params,
+                        )
+                    )
+
             else:
-                test_stats: Dict[MetricKeys, float] = {}
+                eval_stats: Dict[MetricKeys, float] = {}
 
             train_step_output = _train_step(
                 batch,
@@ -460,7 +471,7 @@ def main():
             replicated_optimizer_state = train_step_output.optimizer_state
 
             train_stats = unreplicate(train_step_output.metrics)
-            stats = {**train_stats, **test_stats}
+            stats = {**train_stats, **eval_stats}
             wandb.log(stats)
 
             if batch_index % pipeline_args.save_every_num_batches == 0:

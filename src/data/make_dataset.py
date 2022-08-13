@@ -393,7 +393,9 @@ def label_dataset(
     output = {}
     for split_key, split in dataset.items():
         label_column = np.zeros(len(split))
-        for index, entry in enumerate(tqdm(split, desc="labelling", ncols=80)):
+        for index, entry in enumerate(
+            tqdm(split, desc=f"labelling {split_key} split", ncols=80)
+        ):
             uid = entry["uid"]
             label_column[index] = int(labels.get(uid, -1))
 

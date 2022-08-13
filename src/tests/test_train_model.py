@@ -570,7 +570,7 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
     def setUp(self):
         self.preprocessed_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
         self.dataloader = get_classification_dataloader(
-            self.preprocessed_dataset,  # type: ignore
+            self.preprocessed_dataset["train"],  # type: ignore
             per_device_batch_size=pipeline_args.train_per_device_batch_size,
             shuffle=True,
             prng_key=jax.random.PRNGKey(0),
@@ -622,8 +622,10 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
 
         replicated_model_params = replicate(model_params)
         test_stats = get_test_stats_cross_entropy(
-            self.preprocessed_dataset,  # type: ignore
+            self.preprocessed_dataset["test"],  # type: ignore
             pipeline_args.eval_per_device_batch_size,
             model,
             replicated_model_params,
+            metric_prefix="validation",
         )
+        print(test_stats)

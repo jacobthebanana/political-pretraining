@@ -13,6 +13,10 @@ MetricKeys = Literal[
     "training_loss",
     "training_loss_net",
     "training_accuracy",
+    "validation_accuracy",
+    "validation_loss",
+    "test_accuracy",
+    "test_loss",
     "eval_accuracy",
     "eval_loss",
 ]
