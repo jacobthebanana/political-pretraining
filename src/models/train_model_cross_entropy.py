@@ -342,9 +342,7 @@ def get_test_stats(
     for batch in tqdm(
         test_dataloader, total=num_test_batches, ncols=80, desc="Evaluating"
     ):
-        batch_stats = _eval_step(
-            batch, model, replicated_model_params, metric_prefix
-        )
+        batch_stats = _eval_step(batch, model, replicated_model_params, metric_prefix)
         for key, value in batch_stats.items():
             unreplicated_value: float = unreplicate(value)
             stats[key].append(unreplicated_value)
@@ -454,6 +452,7 @@ def main():
                             pipeline_args.eval_per_device_batch_size,
                             model,
                             replicated_model_params,
+                            metric_prefix=eval_split_key,
                         )
                     )
 
