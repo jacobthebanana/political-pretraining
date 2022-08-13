@@ -22,6 +22,7 @@ def main():
 
     filtered_labels = uid_labels[["true_label", "screen_name", "user_id"]]
     filtered_labels = filtered_labels.dropna(inplace=False, subset=["true_label"])
+    filtered_labels["true_label"].map(int)
 
     print(Counter(filtered_labels["true_label"]))
 

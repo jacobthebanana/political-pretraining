@@ -86,7 +86,7 @@ def get_classification_dataloader(
         }
         batch = LabelledBatch(
             tokens=tokens,
-            labels=jnp.array(examples["label"]),
+            labels=jnp.array(examples["label"], dtype=int),
             loss_mask=jnp.ones(actual_batch_size),
         )
 
