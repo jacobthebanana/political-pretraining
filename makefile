@@ -25,7 +25,10 @@ download_politician_json:
 download_true_labels:
 	wget -O "data/raw/screen_names.tsv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${SCREEN_NAMES_TSV_FILE_ID}"
 	wget -O "data/raw/true_labels.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TRUE_USER_LABELS_FILE_ID}"
-	
+
+download_test_uids:
+	wget -O "data/raw/test_uids.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_SUBSET_USER_FILE_ID}"
+
 download_text: download_text_csv download_text_json
 
 clean: 
@@ -45,6 +48,12 @@ merge_label_files:
 		--raw_true_label_jsonl_path="data/raw/true_labels.jsonl" \
 		--scree_name_to_uid_tsv_path="data/raw/screen_names.tsv" \
 		--processed_true_label_path="data/interim/true_labels.csv"
+
+
+validate_test_uids: download_true_labels download_test_uids merge_label_files
+	python3 -m src.data.verify_label_availability \
+		"data/raw/test_uids.csv" \
+		"data/interim/true_labels.csv"
 
 # Generate filtered label file where classifier label must be non-empty.
 generate_filtered_label_file:
