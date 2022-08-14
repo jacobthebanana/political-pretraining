@@ -372,17 +372,21 @@ def get_test_stats(
             correct_by_user[user_id].append(is_prediction_correct)
 
     num_users = 0
-    user_accuracy_tally = 0
+    user_accuracy_tally = 0  # Sum of per-user accuracy score.
+    user_tally = 0  # Number of users with a correct majority vote.
     for user_id, predictions in correct_by_user.items():
         predictions: List[bool]
         if predictions is not None:
             num_users += 1
             user_accuracy_tally += sum(predictions) / len(predictions)
+            if user_accuracy_tally >= (1 / 2):
+                user_tally += 1
 
     stats_output: Dict[str, float] = {}
 
     if num_users > 0:
         stats_output[metric_prefix + "_user_accuracy"] = user_accuracy_tally / num_users
+        stats_output[metric_prefix + "_correct_users_ratio"] = user_tally / num_users
 
     for key, values in stats.items():
         stats_output[key] = sum(values) / len(values)
