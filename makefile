@@ -179,6 +179,7 @@ train_cross_entropy:
 		--model_output_path=${model_output_path} \
 		--save_every_num_batches=${save_every_num_batches} \
 		--weight_decay=${weight_decay} \
+		--learning_rate=${learning_rate} \
 		--test_ratio=${test_ratio} \
 		--eval_every_num_batches=${eval_every_num_batches} \
 		--wandb_entity=${wandb_entity} \

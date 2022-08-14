@@ -356,7 +356,7 @@ def get_test_stats(
 
         user_ids: List[str] = examples["uid"]
         num_examples = len(user_ids)
-        batch_predictions = eval_output.predictions.flatten()[num_examples:]
+        batch_predictions = eval_output.predictions.flatten()[:num_examples]
 
         for key, value in batch_stats.items():
             unreplicated_value: float = unreplicate(value)
