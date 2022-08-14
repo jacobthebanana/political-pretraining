@@ -2,8 +2,8 @@
 Functions for training with classification objective with 
 a cross-entropy loss.
 """
-from typing import Iterator, Tuple, Dict, List, Callable, overload
-from collections import defaultdict
+from typing import Iterator, Tuple, Dict, List, Any
+from collections import defaultdict, Counter
 import json
 from socket import gethostname
 import datetime
@@ -30,13 +30,17 @@ from ..config import (
     PipelineConfig,
     BatchTokenKeysWithLabels,
     MetricKeys,
+    LabelByUID,
+    DatasetFeatures,
+    UserID,
 )
+from ..data import load_labels
 from .model_utils import (
     LabelledBatch,
     ShardedLabelledBatch,
     TokenizerOutput,
     TrainStepOutput,
-    ShardedTrainStepOutput,
+    EvalStepOutput,
 )
 
 Dataset = datasets.arrow_dataset.Dataset
@@ -51,7 +55,7 @@ def get_classification_dataloader(
     per_device_batch_size: int,
     shuffle: bool = True,
     prng_key: jax.random.KeyArray = jax.random.PRNGKey(0),
-) -> Iterator[ShardedLabelledBatch]:
+) -> Iterator[Tuple[ShardedLabelledBatch, Dict[DatasetFeatures, Any]]]:
     """
     Return dataloader for classification (training and inference.)
     If shuffle = True, the dataloader loop would retrieve from the
@@ -66,6 +70,7 @@ def get_classification_dataloader(
     Return:
      ShardedTokenBatch: note that each array in this batch is of shape
      (num_devices, per_device_batch_size, ...)
+     Dict[str, Any]: Raw examples from the dataset.
     """
     actual_batch_size = jax.device_count() * per_device_batch_size
     num_examples = len(dataset)
@@ -79,7 +84,7 @@ def get_classification_dataloader(
 
     for j in range(num_batches):
         indices_in_batch = indices[j * actual_batch_size : (j + 1) * actual_batch_size]
-        examples: Dict[BatchTokenKeysWithLabels, Array] = dataset[indices_in_batch]
+        examples: Dict[DatasetFeatures, Array] = dataset[indices_in_batch]
         tokens: TokenizerOutput = {
             "input_ids": jnp.array(examples["input_ids"]),
             "attention_mask": jnp.array(examples["attention_mask"]),
@@ -91,13 +96,11 @@ def get_classification_dataloader(
         )
 
         sharded_batch: ShardedLabelledBatch = shard(batch)
-        yield sharded_batch
+        yield sharded_batch, examples
 
     if num_trailing_examples >= 1:
         trailing_indices = indices[num_divisible_examples:]
-        trailing_examples: Dict[BatchTokenKeysWithLabels, Array] = dataset[
-            trailing_indices
-        ]
+        trailing_examples: Dict[DatasetFeatures, Array] = dataset[trailing_indices]
         padding_length = actual_batch_size - num_trailing_examples
 
         # (num_trailing_examples, max_length)
@@ -135,14 +138,14 @@ def get_classification_dataloader(
             tokens=tokens_padded, labels=labels_padded, loss_mask=loss_mask
         )
         sharded_trailing_batch: ShardedLabelledBatch = shard(trailing_batch)
-        yield sharded_trailing_batch
+        yield sharded_trailing_batch, trailing_examples
 
 
 def _loss_accuracy_fn_single_shard(
     batch: LabelledBatch,
     model: FlaxRobertaForSequenceClassification,
     model_params: Dict,
-) -> Tuple[Array, Array]:
+) -> Tuple[Array, Tuple[Array, Array]]:
     """
     Return the loss and accuracy of the given model
     on the given non-sharded data batch.
@@ -153,7 +156,7 @@ def _loss_accuracy_fn_single_shard(
      model_params: parameters for the Flax model.
 
     Returns:
-     cross-entropy loss and classification accuracy.
+     cross-entropy loss, (classification accuracy, and predictions).
     """
     output = model(**(batch.tokens), params=model_params)  # type: ignore
     output: FlaxSequenceClassifierOutput
@@ -175,14 +178,14 @@ def _loss_accuracy_fn_single_shard(
     safe_num_predictions = jnp.where(num_predictions == 0, 1, num_predictions)
     accuracy = num_correct / safe_num_predictions
 
-    return batch_loss, accuracy
+    return batch_loss, (accuracy, predictions)
 
 
 def _grad_accuracy_fn_single_shard(
     batch: LabelledBatch,
     model: FlaxRobertaForSequenceClassification,
     model_params: ModelParams,
-) -> Tuple[Tuple[Array, Array], optax.Updates]:
+) -> Tuple[Tuple[Array, Tuple[Array, Array]], optax.Updates]:
     ...
 
 
@@ -196,7 +199,7 @@ def _eval_step_single_shard(
     model: FlaxRobertaForSequenceClassification,
     model_params: Dict,
     metric_prefix: str,
-) -> Dict[str, Array]:
+) -> EvalStepOutput:
     """
     Get eval stats on the given batch.
     Applied pmean to the stats.
@@ -210,7 +213,9 @@ def _eval_step_single_shard(
     Returns:
      Dict[str, Array]: non-replicated model stats.
     """
-    loss, accuracy = _loss_accuracy_fn_single_shard(batch, model, model_params)
+    loss, (accuracy, predictions) = _loss_accuracy_fn_single_shard(
+        batch, model, model_params
+    )
     loss, accuracy = jax.lax.pmean((loss, accuracy), axis_name="data")
 
     metrics: Dict[str, Array] = {
@@ -218,7 +223,7 @@ def _eval_step_single_shard(
         metric_prefix + "_accuracy": accuracy,
     }
 
-    return metrics
+    return EvalStepOutput(metrics=metrics, predictions=predictions)
 
 
 def _eval_step(
@@ -226,7 +231,7 @@ def _eval_step(
     model: FlaxRobertaForSequenceClassification,
     model_params: ReplicatedModelParams,
     metric_prefix: str,
-) -> Dict[MetricKeys, Array]:
+) -> EvalStepOutput:
     """
     Evaluation step with pmean on the stats.
     Note that the stats arrays in the output are replicated.
@@ -260,7 +265,7 @@ def _train_step_single_shard(
     Returns:
      TrainStepOutput: non-replicated model parameters and stats.
     """
-    (loss, accuracy), param_grad = _grad_accuracy_fn_single_shard(
+    (loss, (accuracy, _)), param_grad = _grad_accuracy_fn_single_shard(
         batch, model, model_params
     )
 
@@ -327,8 +332,9 @@ def get_test_stats(
     test_batch_size: int,
     model: FlaxRobertaForSequenceClassification,
     replicated_model_params: ReplicatedModelParams,
+    user_labels: LabelByUID,
     metric_prefix: str = "eval",
-) -> Dict[MetricKeys, float]:
+) -> Dict[str, float]:
     """
     Returns test stats.
     """
@@ -337,20 +343,45 @@ def get_test_stats(
     )
     num_test_batches = get_num_batches(test_dataset, test_batch_size)
 
-    stats: Dict[MetricKeys, List[float]] = defaultdict(list)
-
-    for batch in tqdm(
+    stats: Dict[str, List[float]] = defaultdict(list)
+    predictions_by_user: Dict[UserID, List[int]] = defaultdict(list)
+    for batch, examples in tqdm(
         test_dataloader,
         total=num_test_batches,
         ncols=80,
         desc=f"Evaluating {metric_prefix}",
     ):
-        batch_stats = _eval_step(batch, model, replicated_model_params, metric_prefix)
+        eval_output = _eval_step(batch, model, replicated_model_params, metric_prefix)
+        batch_stats = eval_output.metrics
+
+        user_ids: List[str] = examples["uid"]
+        num_examples = len(user_ids)
+        batch_predictions = eval_output.predictions.flatten()[num_examples:]
+
         for key, value in batch_stats.items():
             unreplicated_value: float = unreplicate(value)
             stats[key].append(unreplicated_value)
 
-    stats_output: Dict[MetricKeys, float] = {}
+        for user_id, prediction_array in zip(user_ids, batch_predictions):
+            user_id: UserID
+            prediction: int = prediction_array.item()
+            predictions_by_user[user_id].append(prediction)
+
+    num_users = 0
+    num_correct_users = 0
+    for user_id, predictions in predictions_by_user.items():
+        true_label = user_labels.get(user_id)
+        if (predictions is not None) and (true_label is not None):
+            num_users += 1
+            majority_prediction, _ = Counter(predictions).most_common(1)[0]
+            if majority_prediction == true_label:
+                num_correct_users += 1
+
+    stats_output: Dict[str, float] = {}
+
+    if num_users > 0:
+        stats_output[metric_prefix + "_user_accuracy"] = num_correct_users / num_users
+
     for key, values in stats.items():
         stats_output[key] = sum(values) / len(values)
 
@@ -420,6 +451,8 @@ def main():
     replicated_model_params = replicate(model_params)
     replicated_optimizer_state = replicate(optimizer_state)
 
+    eval_labels = load_labels(data_args.validation_filtered_label_path)
+
     wandb.init(
         entity=pipeline_args.wandb_entity,
         project=pipeline_args.wandb_project,
@@ -441,7 +474,7 @@ def main():
             prng_key=jax.random.PRNGKey(pipeline_args.train_prng_key),
         )
 
-        for batch_index, batch in enumerate(
+        for batch_index, (batch, _) in enumerate(
             tqdm(train_dataloader, ncols=80, total=num_train_batches_per_epoch)
         ):
             if batch_index % pipeline_args.eval_every_num_batches == 0:
@@ -455,6 +488,7 @@ def main():
                             pipeline_args.eval_per_device_batch_size,
                             model,
                             replicated_model_params,
+                            eval_labels,
                             metric_prefix=eval_split_key,
                         ),
                     )

@@ -107,6 +107,11 @@ class BatchForMiningWithEmbeddings(NamedTuple):
     negative_candidate_batch: BatchWithEmbeddings
 
 
+class EvalStepOutput(NamedTuple):
+    metrics: Dict[str, Array]
+    predictions: Array
+
+
 def reshape_batch(batch: Dict[str, Union[Array, str]]) -> Batch:
     """
     Convert a batch from the HuggingFace dataset into a "Batch"

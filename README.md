@@ -39,7 +39,7 @@ Pre-train model with the triplet loss objective:
 make train
 ```
 
-Fine-tune model with to predict affiliation from text (with the cross-entropy objective function):
+Fine-tune model to predict affiliation from text (with the cross-entropy objective function):
 
 ```bash
 make train_cross_entropy

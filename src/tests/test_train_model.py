@@ -49,6 +49,7 @@ from ..models.model_utils import (
     ShardedTokenBatch,
     ShardedBatchEmbeddings,
 )
+from ..data import load_labels
 from ..config import (
     DataConfig,
     ModelConfig,
@@ -547,7 +548,7 @@ class GetClassificationDataloader(unittest.TestCase):
 
         num_real_entries = 0
 
-        for batch in dataloader:
+        for batch, _ in dataloader:
             chex.assert_equal_shape(
                 (batch.tokens["attention_mask"], batch.tokens["input_ids"])
             )
@@ -585,14 +586,14 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
         model: FlaxRobertaForSequenceClassification
         model_params = model.params
 
-        optimizer = optax.adamw(0.01, weight_decay=model_args.weight_decay)
+        optimizer = optax.adamw(0.0001, weight_decay=model_args.weight_decay)
         # Initialize optimizer with original (non-replicated) model parameters
         optimizer_state = optimizer.init(model_params)
 
         replicated_model_params = replicate(model_params)
         replicated_optimizer_state = replicate(optimizer_state)
 
-        batch = next(self.dataloader)
+        batch, _ = next(self.dataloader)
         training_losses = []
 
         for _ in tqdm(range(12), desc="Unit testing", ncols=80):
@@ -613,6 +614,7 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
 
     def test_get_model_eval_metrics(self):
         num_labels = get_num_classes(data_args)
+        user_labels = load_labels(data_args.filtered_label_path)
 
         model = FlaxRobertaForSequenceClassification.from_pretrained(
             model_args.base_model_name, num_labels=num_labels
@@ -621,11 +623,12 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
         model_params = model.params
 
         replicated_model_params = replicate(model_params)
+        dataset: Dataset = self.preprocessed_dataset["test"]  # type: ignore
         test_stats = get_test_stats_cross_entropy(
-            self.preprocessed_dataset["test"],  # type: ignore
+            dataset,
             pipeline_args.eval_per_device_batch_size,
             model,
             replicated_model_params,
+            user_labels,
             metric_prefix="validation",
         )
-        print(test_stats)
