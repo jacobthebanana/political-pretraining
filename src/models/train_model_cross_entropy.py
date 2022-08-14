@@ -344,7 +344,7 @@ def get_test_stats(
     num_test_batches = get_num_batches(test_dataset, test_batch_size)
 
     stats: Dict[str, List[float]] = defaultdict(list)
-    predictions_by_user: Dict[UserID, List[int]] = defaultdict(list)
+    correct_by_user: Dict[UserID, List[bool]] = defaultdict(list)
     for batch, examples in tqdm(
         test_dataloader,
         total=num_test_batches,
@@ -356,31 +356,33 @@ def get_test_stats(
 
         user_ids: List[str] = examples["uid"]
         num_examples = len(user_ids)
-        batch_predictions = eval_output.predictions.flatten()[:num_examples]
+        correct_predictions_array: Array = (
+            eval_output.predictions == batch.labels
+        ).flatten()
+        correct_predictions: List[bool] = correct_predictions_array.tolist()[
+            :num_examples
+        ]
 
         for key, value in batch_stats.items():
             unreplicated_value: float = unreplicate(value)
             stats[key].append(unreplicated_value)
 
-        for user_id, prediction_array in zip(user_ids, batch_predictions):
+        for user_id, is_prediction_correct in zip(user_ids, correct_predictions):
             user_id: UserID
-            prediction: int = prediction_array.item()
-            predictions_by_user[user_id].append(prediction)
+            correct_by_user[user_id].append(is_prediction_correct)
 
     num_users = 0
-    num_correct_users = 0
-    for user_id, predictions in predictions_by_user.items():
-        true_label = user_labels.get(user_id)
-        if (predictions is not None) and (true_label is not None):
+    user_accuracy_tally = 0
+    for user_id, predictions in correct_by_user.items():
+        predictions: List[bool]
+        if predictions is not None:
             num_users += 1
-            majority_prediction, _ = Counter(predictions).most_common(1)[0]
-            if majority_prediction == true_label:
-                num_correct_users += 1
+            user_accuracy_tally += sum(predictions) / len(predictions)
 
     stats_output: Dict[str, float] = {}
 
     if num_users > 0:
-        stats_output[metric_prefix + "_user_accuracy"] = num_correct_users / num_users
+        stats_output[metric_prefix + "_user_accuracy"] = user_accuracy_tally / num_users
 
     for key, values in stats.items():
         stats_output[key] = sum(values) / len(values)
