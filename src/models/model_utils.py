@@ -110,6 +110,7 @@ class BatchForMiningWithEmbeddings(NamedTuple):
 class EvalStepOutput(NamedTuple):
     metrics: Dict[str, Array]
     predictions: Array
+    loss_mask: Array
 
 
 def reshape_batch(batch: Dict[str, Union[Array, str]]) -> Batch:

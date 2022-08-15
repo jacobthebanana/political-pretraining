@@ -48,6 +48,7 @@ Array = jnp.ndarray
 
 ModelParams = optax.Params
 ReplicatedModelParams = optax.Params
+PerUserPredictions = Dict[UserID, List[int]]
 
 
 def get_classification_dataloader(
@@ -166,7 +167,10 @@ def _loss_accuracy_fn_single_shard(
         optax.softmax_cross_entropy_with_integer_labels(logits, batch.labels)
         * batch.loss_mask
     )
-    batch_loss = jnp.mean(loss)
+    actual_num_examples = jnp.where(
+        jnp.sum(batch.loss_mask) > 0, jnp.sum(batch.loss_mask), 1
+    )
+    batch_loss = jnp.sum(loss) / actual_num_examples
 
     predictions = jnp.argmax(logits, axis=-1)
     correct_entries = jnp.where(
@@ -223,7 +227,9 @@ def _eval_step_single_shard(
         metric_prefix + "_accuracy": accuracy,
     }
 
-    return EvalStepOutput(metrics=metrics, predictions=predictions)
+    return EvalStepOutput(
+        metrics=metrics, predictions=predictions, loss_mask=batch.loss_mask
+    )
 
 
 def _eval_step(
@@ -327,6 +333,99 @@ def get_num_batches(dataset: Dataset, per_device_batch_size: int) -> int:
     return num_regular_batches
 
 
+def get_most_popular_label(predictions: List[int]) -> int:
+    """
+    Return the most popular prediction for a given user.
+
+    Args:
+     predictions: list of labels (integers.)
+
+    Returns:
+     int: most common integer in the predictions.
+    """
+    assert len(predictions) >= 1
+    prediction_counter = Counter(predictions)
+    most_frequent, _ = prediction_counter.most_common()[0]
+
+    return most_frequent
+
+
+def get_predictions_from_batch_output(eval_output: EvalStepOutput) -> List[int]:
+    """
+    Extract and slice label output from a sharded eval output.
+
+    Args:
+     eval_output: with eval_output.predictions and eval_output.loss_mask of shape
+        (num_devices, per_device_batch_size).
+
+    Returns:
+     List[int]: list of label integers in the order in which they appear in the
+        flattened array. Only entries where loss_mask == 1 would be included.
+    """
+    predictions: Array = eval_output.predictions.astype(int).flatten().tolist()
+    loss_masks: Array = eval_output.loss_mask.astype(int).flatten().tolist()
+
+    assert isinstance(predictions[0], int)
+    assert isinstance(loss_masks[0], int)
+
+    output: List[int] = []
+    for prediction, loss_mask in zip(predictions, loss_masks):
+        if loss_mask == 1:
+            output.append(prediction)
+
+    return output
+
+
+def update_user_predictions(
+    user_predictions: PerUserPredictions, predictions: List[int], user_ids: List[UserID]
+) -> PerUserPredictions:
+    """
+    Given prediction labels and corresponding user ids from a given batch,
+    return an updated copy of the given user_prediction dictionary.
+    """
+    output: PerUserPredictions = defaultdict(list)
+    assert len(predictions) == len(user_ids)
+    for user_id, prediction in zip(user_ids, predictions):
+        output[user_id].append(prediction)
+
+    for user_id, previous_predictions in user_predictions.items():
+        output[user_id].extend(previous_predictions)
+
+    return output
+
+
+def get_fraction_correct_users(
+    per_user_predictions: PerUserPredictions, labels: LabelByUID
+) -> float:
+    """
+    Return the ratio of users in both user_predictions and labels
+    with a correct most-popular user_predictions label.
+
+    Args:
+     user_predictions: PerUserPredictions, Dict[UserID, List[int]].
+     labels: LabelByUID, dictionary, Dict[UserID, int].
+
+    Returns:
+     float: fraction of users in both user_predictions and labels
+        with a correct most-popular label from user_predictions.
+    """
+    num_labelled_users = 0
+    num_correct_users = 0
+    for user_id, user_predictions in per_user_predictions.items():
+        true_label = labels.get(user_id)
+        if true_label is not None:
+            num_labelled_users += 1
+            popular_prediction = get_most_popular_label(user_predictions)
+
+            if int(popular_prediction) == int(true_label):
+                num_correct_users += 1
+
+    if num_labelled_users == 0:
+        return -1
+
+    return num_correct_users / num_labelled_users
+
+
 def get_test_stats(
     test_dataset: Dataset,
     test_batch_size: int,
@@ -345,6 +444,8 @@ def get_test_stats(
 
     stats: Dict[str, List[float]] = defaultdict(list)
     correct_by_user: Dict[UserID, List[bool]] = defaultdict(list)
+
+    per_user_predictions: PerUserPredictions = {}
     for batch, examples in tqdm(
         test_dataloader,
         total=num_test_batches,
@@ -367,26 +468,32 @@ def get_test_stats(
             unreplicated_value: float = unreplicate(value)
             stats[key].append(unreplicated_value)
 
+        user_ids: List[str] = examples["uid"]
+        batch_predictions: List[int] = get_predictions_from_batch_output(eval_output)
+        per_user_predictions = update_user_predictions(
+            per_user_predictions, batch_predictions, user_ids
+        )
+
         for user_id, is_prediction_correct in zip(user_ids, correct_predictions):
             user_id: UserID
             correct_by_user[user_id].append(is_prediction_correct)
 
     num_users = 0
     user_accuracy_tally = 0  # Sum of per-user accuracy score.
-    user_tally = 0  # Number of users with a correct majority vote.
-    for user_id, predictions in correct_by_user.items():
+    for _, predictions in correct_by_user.items():
         predictions: List[bool]
-        if predictions is not None:
+        if len(predictions) > 0:
             num_users += 1
             user_accuracy_tally += sum(predictions) / len(predictions)
-            if user_accuracy_tally >= (1 / 2):
-                user_tally += 1
 
     stats_output: Dict[str, float] = {}
 
+    print(per_user_predictions)
     if num_users > 0:
         stats_output[metric_prefix + "_user_accuracy"] = user_accuracy_tally / num_users
-        stats_output[metric_prefix + "_correct_users_ratio"] = user_tally / num_users
+        stats_output[
+            metric_prefix + "_correct_users_ratio"
+        ] = get_fraction_correct_users(per_user_predictions, user_labels)
 
     for key, values in stats.items():
         stats_output[key] = sum(values) / len(values)

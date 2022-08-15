@@ -1,5 +1,5 @@
 import unittest
-from typing import Dict
+from typing import Dict, List
 import json
 from collections import Counter
 from os import environ
@@ -38,6 +38,11 @@ from ..models.train_model_cross_entropy import (
     get_num_classes,
     _train_step as _train_step_cross_entropy,
     get_test_stats as get_test_stats_cross_entropy,
+    get_predictions_from_batch_output,
+    get_most_popular_label,
+    update_user_predictions,
+    PerUserPredictions,
+    get_fraction_correct_users,
 )
 from ..models.model_utils import (
     TokenBatch,
@@ -48,6 +53,7 @@ from ..models.model_utils import (
     BatchEmbeddings,
     ShardedTokenBatch,
     ShardedBatchEmbeddings,
+    EvalStepOutput,
 )
 from ..data import load_labels
 from ..config import (
@@ -535,7 +541,9 @@ class StepTraining(unittest.TestCase):
 
 class GetClassificationDataloader(unittest.TestCase):
     def setUp(self):
-        self.preprocessed_dataset: Dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
+        self.preprocessed_dataset: Dataset = load_from_disk(  # type: ignore
+            data_args.processed_dataset_path
+        )["train"]
 
     def test_batch_shape(self):
         batch_size = pipeline_args.eval_per_device_batch_size
@@ -632,3 +640,74 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
             user_labels,
             metric_prefix="validation",
         )
+
+
+class GetModelTestMetrics(unittest.TestCase):
+    def setUp(self):
+        actual_eval_batch_size = pipeline_args.eval_per_device_batch_size * num_devices
+        self.actual_batch_size = min(11, actual_eval_batch_size)
+        self.example_eval_output = EvalStepOutput(
+            metrics={},
+            predictions=jnp.arange(actual_eval_batch_size).reshape(
+                (num_devices, pipeline_args.eval_per_device_batch_size)
+            ),
+            loss_mask=jnp.ones(actual_eval_batch_size)
+            .at[self.actual_batch_size :]
+            .set(0)
+            .reshape((num_devices, pipeline_args.eval_per_device_batch_size)),
+        )
+
+    def test_get_predictions_from_batch_output(self):
+        predictions = get_predictions_from_batch_output(self.example_eval_output)
+        print(predictions)
+        self.assertEqual(len(predictions), self.actual_batch_size)
+        self.assertEqual(predictions[0], 0)
+        self.assertEqual(predictions[-1], self.actual_batch_size - 1)
+
+    def test_get_most_popular_label(self):
+        most_popular_label = get_most_popular_label([9, 9, 6])
+        self.assertEqual(most_popular_label, 9)
+
+    def test_update_per_user_predictions(self):
+        previous_per_user_predictions: PerUserPredictions = {
+            "7": [0, 1],
+            "11": [0, 0, 1],
+            "12": [1, 0, 1],
+        }
+
+        predictions: List[int] = [-1, 0, 0, 1, -1, 1]
+        user_ids: List[str] = ["11", "5", "11", "9", "5", "5"]
+        updated_per_user_predictions = update_user_predictions(
+            previous_per_user_predictions, predictions, user_ids
+        )
+
+        self.assertListEqual(updated_per_user_predictions["5"], [0, -1, 1])
+        self.assertListEqual(updated_per_user_predictions["7"], [0, 1])
+        self.assertListEqual(updated_per_user_predictions["9"], [1])
+        self.assertListEqual(updated_per_user_predictions["11"], [-1, 0, 0, 0, 1])
+        self.assertListEqual(updated_per_user_predictions["12"], [1, 0, 1])
+
+    def test_get_fraction_correct_users(self):
+        user_labels = {
+            "7": 0,
+            "11": 1,
+        }
+
+        user_float_labels = {
+            "7": 0.0,
+            "11": 1.0,
+        }
+
+        per_user_predictions: PerUserPredictions = {
+            "7": [0, 1],
+            "11": [0, 0, 1],
+            "12": [1, 0, 1],
+        }
+
+        fraction_correct = get_fraction_correct_users(per_user_predictions, user_labels)
+        self.assertEqual(fraction_correct, 1 / 2)
+
+        fraction_correct_float_labels = get_fraction_correct_users(
+            per_user_predictions, user_float_labels  # type: ignore
+        )
+        self.assertEqual(fraction_correct_float_labels, 1 / 2)
