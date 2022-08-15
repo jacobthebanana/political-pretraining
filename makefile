@@ -25,6 +25,7 @@ download_politician_json:
 download_true_labels:
 	wget -O "data/raw/screen_names.tsv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${SCREEN_NAMES_TSV_FILE_ID}"
 	wget -O "data/raw/true_labels.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TRUE_USER_LABELS_FILE_ID}"
+	wget -O "data/interim/label_id_to_label_text.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${LABEL_TEXT_TO_ID_FILE_ID}"
 
 download_test_uids:
 	wget -O "data/raw/test_uids.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_SUBSET_USER_FILE_ID}"

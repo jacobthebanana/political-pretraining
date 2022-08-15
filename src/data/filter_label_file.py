@@ -4,6 +4,7 @@ classifier_label is unavailable and splitting labelled data.
 """
 from typing import List, Dict, Tuple
 import json
+import os
 
 import numpy as np
 import jax
@@ -116,7 +117,13 @@ def main():
         raw_labels = raw_label_file.readlines()
 
     filtered_labels: List[str] = []
-    label_text_to_label_id: Dict[str, int] = {}
+
+    label_id_to_label_text_path = data_args.label_id_to_label_text_path
+    if os.path.exists(label_id_to_label_text_path):
+        with open(label_id_to_label_text_path, "r") as label_id_to_label_text_file:
+            label_text_to_label_id = json.load(label_id_to_label_text_file)
+    else:
+        label_text_to_label_id: Dict[str, int] = {}
     label_id: int = -1
 
     for raw_label_entry in tqdm(raw_labels[1:], desc="Filtering labels", ncols=80):
