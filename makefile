@@ -25,7 +25,7 @@ download_politician_json:
 download_true_labels:
 	wget -O "data/raw/screen_names.tsv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${SCREEN_NAMES_TSV_FILE_ID}"
 	wget -O "data/raw/true_labels.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TRUE_USER_LABELS_FILE_ID}"
-	wget -O "data/interim/label_id_to_label_text.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${LABEL_TEXT_TO_ID_FILE_ID}"
+	wget -O "data/interim/label_text_to_label_id.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${LABEL_TEXT_TO_ID_FILE_ID}"
 
 download_test_uids:
 	wget -O "data/raw/test_uids.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_SUBSET_USER_FILE_ID}"
@@ -66,7 +66,7 @@ generate_filtered_label_file:
 		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
 		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
 		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
-		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
+		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--test_ratio=${test_ratio} \
 		--validation_ratio=${validation_ratio}
@@ -81,7 +81,7 @@ generate_filtered_label_file_with_true_labels:
 		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
 		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
 		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
-		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
+		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--validation_ratio=${validation_ratio}
 
@@ -96,7 +96,7 @@ generate_filtered_label_file_with_test_labels: select_test_uids
 		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
 		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
 		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
-		--label_id_to_label_text_path="data/interim/label_id_to_label_text.json" \
+		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--validation_ratio=${validation_ratio}
 

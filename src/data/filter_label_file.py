@@ -118,7 +118,7 @@ def main():
 
     filtered_labels: List[str] = []
 
-    label_id_to_label_text_path = data_args.label_id_to_label_text_path
+    label_id_to_label_text_path = data_args.label_text_to_label_id_path
     if os.path.exists(label_id_to_label_text_path):
         with open(label_id_to_label_text_path, "r") as label_id_to_label_text_file:
             label_text_to_label_id = json.load(label_id_to_label_text_file)
@@ -155,7 +155,7 @@ def main():
         test_labels = true_labels
     else:
         test_ratio = data_args.test_ratio
-        
+
         # Ensure that validation ratio refers to the fraction of the entire data set.
         validation_ratio = data_args.validation_ratio / (1 - test_ratio)
 
@@ -187,9 +187,9 @@ def main():
         label_id_to_label_text[label_id] = label_text
 
     with open(
-        data_args.label_id_to_label_text_path, "w"
-    ) as label_id_to_label_text_file:
-        json.dump(label_id_to_label_text, label_id_to_label_text_file, indent=2)
+        data_args.label_text_to_label_id_path, "w"
+    ) as label_label_text_to_id_file:
+        json.dump(label_text_to_label_id, label_label_text_to_id_file, indent=2)
 
 
 if __name__ == "__main__":

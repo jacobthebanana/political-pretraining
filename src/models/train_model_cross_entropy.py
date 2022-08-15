@@ -512,7 +512,7 @@ def get_num_classes(data_args: DataConfig) -> int:
     Returns:
      int.
     """
-    with open(data_args.label_id_to_label_text_path, "r") as label_lookup_file:
+    with open(data_args.label_text_to_label_id_path, "r") as label_lookup_file:
         label_lookup = json.load(label_lookup_file)
 
     return len(label_lookup.keys())

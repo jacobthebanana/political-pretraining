@@ -83,8 +83,8 @@ class DataConfig:
     test_filtered_label_path: str = field(
         default="data/interim/test_filtered_user_labels.csv"
     )
-    label_id_to_label_text_path: str = field(
-        default="data/interim/label_id_to_label_text.json"
+    label_text_to_label_id_path: str = field(
+        default="data/interim/label_text_to_label_id.json"
     )
     # Whether to exclude text from unlabelled users in the preprocessed dataset.
     require_labels: bool = field(default=False)
