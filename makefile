@@ -51,7 +51,8 @@ merge_label_files:
 		--processed_true_label_path="data/interim/true_labels.csv"
 
 
-# Verify that all test labels are available as true labels.
+# Verify that all test labels are available as true labels and select
+# rows matching test_uids.
 select_test_uids: download_true_labels download_test_uids merge_label_files
 	python3 -m src.data.slice_labels \
 		"data/raw/test_uids.csv" \
@@ -93,6 +94,19 @@ generate_filtered_label_file_with_test_labels: select_test_uids
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
 		--use_true_label_for_test_split=1 \
 		--processed_true_label_path="data/interim/true_labels.csv" \
+		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
+		--train_test_split_prng_seed=${train_test_split_prng_seed} \
+		--validation_ratio=${validation_ratio}
+
+generate_filtered_label_file_with_true_train_labels_and_test_labels: select_test_uids
+	python3 -m src.data.filter_label_file \
+		--raw_label_path="data/interim/true_labels.csv" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--use_true_label_for_test_split=1 \
+		--processed_true_label_path="data/interim/test_labels.csv" \
 		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
 		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
 		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
