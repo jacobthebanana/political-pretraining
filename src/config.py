@@ -103,8 +103,8 @@ class DataConfig:
     rerun_tokenization: bool = field(default=True)
     per_user_concatenation: bool = field(default=False)
     bag_of_words_baseline_enabled: bool = field(default=False)
-    bag_of_words_keyword_list_json_path: str = field(default="data/raw/keywords.json")
-    bag_of_words_count_cap: int = field(default=-1) # Set to (-1) to turn off.
+    bag_of_words_keyword_csv_path: str = field(default="data/raw/keywords.csv")
+    bag_of_words_count_cap: int = field(default=-1)  # Set to (-1) to turn off.
     concatenation_delimiter: ConcatenationDelimiter = field(
         default=ConcatenationDelimiter.NEWLINE
     )
@@ -120,6 +120,7 @@ class PipelineConfig:
     # Batch size for calculating gradients
     train_per_device_batch_size: int = field(default=16)
     train_prng_key: int = field(default=0)
+    param_init_prng_key: int = field(default=0)
     num_epochs: int = field(default=1)
     save_every_num_batches: int = field(default=1000)
     eval_every_num_batches: int = field(default=10)

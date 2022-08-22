@@ -255,12 +255,13 @@ def _concatenate_by_uid_on_shard(
         for text in texts:
             if text:
                 user_text = text + delimiter
-                new_length = len(tokenizer(text_buffer + user_text)["input_ids"])
 
-                if (
-                    new_length >= shard.model_args.max_seq_length
-                    and not shard.data_args.bag_of_words_baseline_enabled
-                ):
+                if shard.data_args.bag_of_words_baseline_enabled:
+                    new_length = -1
+                else:
+                    new_length = len(tokenizer(text_buffer + user_text)["input_ids"])
+
+                if new_length >= shard.model_args.max_seq_length:
                     output["uid"].append(uid)
                     output["tid"].append(leading_tid)
                     output["text"].append(text_buffer)
@@ -326,7 +327,7 @@ def concatenate_by_uid(
 
 def generate_keyword_counts(
     texts: List[str], keywords: List[str], cap: int = -1
-) -> Array:
+) -> Dict[str, Array]:
     """
     Given a list of n paragraphs and m keywords,
     return the count of each keyword in each paragraph as an (n, m) array).
@@ -352,7 +353,34 @@ def generate_keyword_counts(
 
             output[text_index, keyword_index] = count
 
-    return output
+    return {"input_ids": output, "attention_mask": np.ones_like(output)}
+
+
+def load_keyword_list(data_args: DataConfig) -> List[str]:
+    """
+    Load the list of bag-of-word baseline keywords
+    specified in data_args.bag_of_words_keyword_csv_path.
+
+    Args:
+     data_args: specifies data_args.bag_of_words_keyword_csv_path,
+     a csv file where each row is of the format "keyword","category".
+
+    Returns:
+     List[str]: list of keywords.
+    """
+    keywords = []
+    with open(
+        data_args.bag_of_words_keyword_csv_path, "r"
+    ) as bag_of_words_keyword_csv_file:
+        bag_of_words_keyword_lines = bag_of_words_keyword_csv_file.readlines()
+
+    for keyword_entry in bag_of_words_keyword_lines:
+        keyword = keyword_entry.split()[0]
+        keyword = keyword.lstrip('"').rstrip('"')
+        keywords.append(keyword)
+
+    assert len(keywords) >= 1
+    return keywords
 
 
 @overload
@@ -394,11 +422,7 @@ def preprocess_and_tokenize_dataset(
                 texts[text_index] = " "
 
         if data_args.bag_of_words_baseline_enabled:
-            with open(
-                data_args.bag_of_words_keyword_list_json_path, "r"
-            ) as keyword_list_file:
-                keyword_list = json.load(keyword_list_file)
-
+            keyword_list = load_keyword_list(data_args)
             return generate_keyword_counts(
                 texts, keyword_list, cap=data_args.bag_of_words_count_cap
             )

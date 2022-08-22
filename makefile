@@ -30,7 +30,10 @@ download_true_labels:
 download_test_uids:
 	wget -O "data/raw/test_uids.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_SUBSET_USER_FILE_ID}"
 
-download_text: download_text_csv download_text_json
+download_baseline_keywords:
+	wget -O "data/raw/keywords.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${BASELINE_KEYWORD_FILE_ID}"
+
+download_text: download_text_csv download_text_json download_baseline_keywords
 
 clean: 
 	rm -rf data/interim
@@ -64,9 +67,9 @@ generate_filtered_label_file:
 	python3 -m src.data.filter_label_file \
 		--raw_label_path="data/raw/user_labels.csv" \
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
-		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
-		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
 		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--test_ratio=${test_ratio} \
@@ -79,9 +82,9 @@ generate_filtered_label_file_with_true_labels:
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
 		--use_true_label_for_test_split=1 \
 		--processed_true_label_path="data/interim/true_labels.csv" \
-		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
-		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
 		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--validation_ratio=${validation_ratio}
@@ -94,9 +97,9 @@ generate_filtered_label_file_with_test_labels: select_test_uids
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
 		--use_true_label_for_test_split=1 \
 		--processed_true_label_path="data/interim/true_labels.csv" \
-		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
-		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
 		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--validation_ratio=${validation_ratio}
@@ -107,18 +110,18 @@ generate_filtered_label_file_with_true_train_labels_and_test_labels: select_test
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
 		--use_true_label_for_test_split=1 \
 		--processed_true_label_path="data/interim/test_labels.csv" \
-		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
-		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
 		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--validation_ratio=${validation_ratio}
 
 replace_validation_labels_with_true_labels:
-	cp data/interim/true_labels.csv data/interim/validation_filtered_user_labels.csv
+	cp data/interim/true_labels.csv data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv
 
 replace_true_labels_with_test_labels:
-	cp data/interim/test_labels.csv data/interim/test_filtered_user_labels.csv
+	cp data/interim/test_labels.csv data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv
 
 # Preprocess (load and tokenize) tweet text into a HuggingFace dataset
 preprocess_csv:
@@ -146,9 +149,9 @@ preprocess_json:
 		--require_labels=${require_labels} \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
-		--train_filtered_label_path="data/interim/train_filtered_user_labels.csv" \
-		--validation_filtered_label_path="data/interim/validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/test_filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
 		--max_seq_length=${max_seq_length} \
 		--shard_denominator=${shard_denominator} \
 		--base_model_name=${base_model_name} \
@@ -166,11 +169,11 @@ preprocess_json_regression_baseline:
 		--require_labels=${require_labels} \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
-		--train_filtered_label_path="data/interim/${processed_dataset_suffix}-train_filtered_user_labels.csv" \
-		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}-validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/${processed_dataset_suffix}-test_filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
 		--enable_indexing=0 \
-		--bag_of_words_baseline_enabled=0 \
+		--bag_of_words_baseline_enabled=1 \
 		--per_user_concatenation=${per_user_concatenation} \
 		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
@@ -180,6 +183,13 @@ setup_report_data: generate_filtered_label_file_with_test_labels \
 	replace_validation_labels_with_true_labels \
 	replace_true_labels_with_test_labels \
 	preprocess_json
+
+setup_report_data_baseline: download_baseline_keywords \
+	generate_filtered_label_file_with_test_labels \
+	generate_filtered_label_file_with_true_labels \
+	replace_validation_labels_with_true_labels \
+	replace_true_labels_with_test_labels \
+	preprocess_json_regression_baseline
 
 show_dataset_stats: 
 	python3 -m src.data.print_dataset_stats \
@@ -206,6 +216,22 @@ train_cross_entropy:
 	python3 -m src.models.train_model_cross_entropy \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--base_model_name=${base_model_name} \
+		--train_per_device_batch_size=${train_per_device_batch_size} \
+		--eval_per_device_batch_size=${eval_per_device_batch_size} \
+		--model_output_path=${model_output_path} \
+		--save_every_num_batches=${save_every_num_batches} \
+		--weight_decay=${weight_decay} \
+		--learning_rate=${learning_rate} \
+		--test_ratio=${test_ratio} \
+		--eval_every_num_batches=${eval_every_num_batches} \
+		--wandb_entity=${wandb_entity} \
+		--wandb_project=${wandb_project} \
+		--num_epochs=${num_epochs}
+
+train_cross_entropy_regression_baseline:
+	python3 -m src.models.train_model_cross_entropy \
+		--bag_of_words_baseline_enabled=1 \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
 		--train_per_device_batch_size=${train_per_device_batch_size} \
 		--eval_per_device_batch_size=${eval_per_device_batch_size} \
 		--model_output_path=${model_output_path} \
@@ -256,7 +282,7 @@ preprocess_test_dataset:
 		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" 
 
 preprocess_test_json_dataset:
-	cp data/interim/train_filtered_user_labels.csv data/interim/test_filtered_user_labels.csv
+	cp data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv
 	python3 -m src.data.make_dataset \
 		--base_model_name=${unittest_base_model_name} \
 		--source_path="data/testing/raw/tweets.json" \

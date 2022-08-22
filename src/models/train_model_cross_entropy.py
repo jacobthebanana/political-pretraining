@@ -34,7 +34,7 @@ from ..config import (
     DatasetFeatures,
     UserID,
 )
-from ..data import load_labels
+from ..data import load_labels, load_keyword_list
 from .model_utils import (
     LabelledBatch,
     ShardedLabelledBatch,
@@ -42,6 +42,7 @@ from .model_utils import (
     TrainStepOutput,
     EvalStepOutput,
 )
+from .baseline_models import LinearRegression
 
 Dataset = datasets.arrow_dataset.Dataset
 Array = jnp.ndarray
@@ -488,7 +489,6 @@ def get_test_stats(
 
     stats_output: Dict[str, float] = {}
 
-    print(per_user_predictions)
     if num_users > 0:
         stats_output[metric_prefix + "_user_accuracy"] = user_accuracy_tally / num_users
         stats_output[
@@ -541,12 +541,25 @@ def main():
     assert isinstance(split_dataset, DatasetDict)
     split_dataset: DatasetDict
 
-    num_labels = get_num_classes(data_args)
-    model = FlaxRobertaForSequenceClassification.from_pretrained(
-        model_args.base_model_name, num_labels=num_labels, from_pt=True
-    )  # type: ignore
-    model: FlaxRobertaForSequenceClassification
-    model_params = model.params
+    num_label_classes = get_num_classes(data_args)
+
+    if data_args.bag_of_words_baseline_enabled:
+        keyword_list = load_keyword_list(data_args)
+        num_keywords = len(keyword_list)
+
+        linear_regression_model = LinearRegression(num_label_classes)
+        param_init_prng_key = jax.random.PRNGKey(pipeline_args.param_init_prng_key)
+
+        model_params = linear_regression_model.init(
+            param_init_prng_key, jnp.ones(num_keywords)
+        )
+        model = linear_regression_model.get_duck_typed_model()  # type: ignore
+    else:
+        model = FlaxRobertaForSequenceClassification.from_pretrained(
+            model_args.base_model_name, num_labels=num_label_classes, from_pt=True
+        )  # type: ignore
+        model: FlaxRobertaForSequenceClassification
+        model_params = model.params
 
     train_dataset = split_dataset["train"]
     num_train_batches_per_epoch = get_num_batches(
@@ -623,7 +636,10 @@ def main():
             stats = {**train_stats, **eval_stats}
             wandb.log(stats)
 
-            if batch_index % pipeline_args.save_every_num_batches == 0:
+            if (
+                batch_index % pipeline_args.save_every_num_batches == 0
+                and not data_args.bag_of_words_baseline_enabled
+            ):
                 model_name = get_model_name(data_args)
                 model_params = unreplicate(replicated_model_params)
                 model.save_pretrained(model_name, params=jax.device_get(model_params))

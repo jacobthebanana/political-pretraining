@@ -20,6 +20,7 @@ from transformers import (
     FlaxRobertaModel,
     FlaxRobertaForSequenceClassification,
 )
+from transformers.modeling_flax_outputs import FlaxSequenceClassifierOutput
 from tqdm.auto import tqdm
 
 from ..models.train_model import (
@@ -54,7 +55,9 @@ from ..models.model_utils import (
     ShardedTokenBatch,
     ShardedBatchEmbeddings,
     EvalStepOutput,
+    TokenizerOutput,
 )
+from ..models.baseline_models import LinearRegression
 from ..data import load_labels
 from ..config import (
     DataConfig,
@@ -711,3 +714,33 @@ class GetModelTestMetrics(unittest.TestCase):
             per_user_predictions, user_float_labels  # type: ignore
         )
         self.assertEqual(fraction_correct_float_labels, 1 / 2)
+
+
+class LinearRegressionBaselineModel(unittest.TestCase):
+    def setUp(self):
+        self.num_key_words = 256
+        self.example_input_entry = jnp.ones((self.num_key_words,))
+        self.num_label_classes = 2
+
+        prng_key = jax.random.PRNGKey(0)
+        self.linear_regression_model = LinearRegression(
+            num_classes=self.num_label_classes
+        )
+        self.model_params = self.linear_regression_model.init(
+            prng_key, x=self.example_input_entry
+        )
+
+    def test_batched_model_output_shape(self):
+        example_batched_input: TokenizerOutput = {
+            "input_ids": jnp.ones(
+                (pipeline_args.train_per_device_batch_size, self.num_key_words)
+            ),
+            "attention_mask": jnp.empty((pipeline_args.train_per_device_batch_size,)),
+        }
+
+        model = self.linear_regression_model.get_duck_typed_model()
+        output = model(**example_batched_input, params=self.model_params)  # type: ignore
+        output: FlaxSequenceClassifierOutput
+        logits = output.logits
+        chex.assert_axis_dimension(logits, 0, pipeline_args.train_per_device_batch_size)
+        chex.assert_axis_dimension(logits, 1, self.num_label_classes)
