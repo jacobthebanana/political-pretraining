@@ -102,6 +102,9 @@ class DataConfig:
     # Whether to tokenize the dataset instead of loading the saved one.
     rerun_tokenization: bool = field(default=True)
     per_user_concatenation: bool = field(default=False)
+    bag_of_words_baseline_enabled: bool = field(default=False)
+    bag_of_words_keyword_list_json_path: str = field(default="data/raw/keywords.json")
+    bag_of_words_count_cap: int = field(default=-1) # Set to (-1) to turn off.
     concatenation_delimiter: ConcatenationDelimiter = field(
         default=ConcatenationDelimiter.NEWLINE
     )

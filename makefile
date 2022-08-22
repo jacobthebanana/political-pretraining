@@ -158,6 +158,23 @@ preprocess_json:
 		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
 
+preprocess_json_regression_baseline:
+	python3 -m src.data.make_dataset \
+		--source_format=json \
+		--source_path="data/raw/tweets.json" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--require_labels=${require_labels} \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}-train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}-validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}-test_filtered_user_labels.csv" \
+		--enable_indexing=0 \
+		--bag_of_words_baseline_enabled=0 \
+		--per_user_concatenation=${per_user_concatenation} \
+		--concatenation_delimiter=${concatenation_delimiter} \
+		--num_procs=${num_procs}
+
 setup_report_data: generate_filtered_label_file_with_test_labels \
 	generate_filtered_label_file_with_true_labels \
 	replace_validation_labels_with_true_labels \

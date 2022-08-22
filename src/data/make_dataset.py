@@ -39,6 +39,7 @@ from ..config import (
 )
 
 Dataset = datasets.arrow_dataset.Dataset
+Array = np.ndarray
 
 
 @dataclass
@@ -256,7 +257,10 @@ def _concatenate_by_uid_on_shard(
                 user_text = text + delimiter
                 new_length = len(tokenizer(text_buffer + user_text)["input_ids"])
 
-                if new_length >= shard.model_args.max_seq_length:
+                if (
+                    new_length >= shard.model_args.max_seq_length
+                    and not shard.data_args.bag_of_words_baseline_enabled
+                ):
                     output["uid"].append(uid)
                     output["tid"].append(leading_tid)
                     output["text"].append(text_buffer)
@@ -320,6 +324,37 @@ def concatenate_by_uid(
     return concatenate_datasets(sharded_datasets)  # type: ignore
 
 
+def generate_keyword_counts(
+    texts: List[str], keywords: List[str], cap: int = -1
+) -> Array:
+    """
+    Given a list of n paragraphs and m keywords,
+    return the count of each keyword in each paragraph as an (n, m) array).
+
+    Args:
+     texts: list of n paragraphs, where each paragraph is a string.
+     keywords: list of m words.
+     cap: maximum count. Set to a negative value to turn off the cap.
+
+
+    Returns:
+     Array of shape (n, m), where the (j, k) entry is the number of times
+     the k-th word (delimited with space) appeared in the j-th paragraph,
+     capped at `cap`.
+    """
+    output = np.zeros((len(texts), len(keywords)), dtype=int)
+    for text_index, text in enumerate(texts):
+        words = text.split()
+        for keyword_index, keyword in enumerate(keywords):
+            count = words.count(keyword)
+            if cap >= 0:
+                count = min(count, cap)
+
+            output[text_index, keyword_index] = count
+
+    return output
+
+
 @overload
 def preprocess_and_tokenize_dataset(
     dataset: datasets.arrow_dataset.Dataset,
@@ -338,7 +373,9 @@ def preprocess_and_tokenize_dataset(
     ...
 
 
-def preprocess_and_tokenize_dataset(dataset, model_args, data_args):
+def preprocess_and_tokenize_dataset(
+    dataset, model_args: ModelConfig, data_args: DataConfig
+):
     """
     Preprocess and tokenize the raw dataset
 
@@ -355,6 +392,16 @@ def preprocess_and_tokenize_dataset(dataset, model_args, data_args):
             text = texts[text_index]
             if not isinstance(text, str):
                 texts[text_index] = " "
+
+        if data_args.bag_of_words_baseline_enabled:
+            with open(
+                data_args.bag_of_words_keyword_list_json_path, "r"
+            ) as keyword_list_file:
+                keyword_list = json.load(keyword_list_file)
+
+            return generate_keyword_counts(
+                texts, keyword_list, cap=data_args.bag_of_words_count_cap
+            )
 
         return tokenizer(
             texts,
