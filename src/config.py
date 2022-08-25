@@ -25,6 +25,8 @@ UserID = str
 LookupByUID = Dict[UserID, Tuple[int, ...]]
 LabelByUID = Dict[UserID, int]
 
+NUM_TQDM_COLUMNS = 80
+
 
 class PoolingStrategy(Enum):
     CLS_EMBEDDING_WITH_DENSE_LAYER = "cls_embedding_with_dense_layer"

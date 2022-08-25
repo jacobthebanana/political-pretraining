@@ -244,6 +244,11 @@ train_cross_entropy_regression_baseline:
 		--wandb_project=${wandb_project} \
 		--num_epochs=${num_epochs}
 
+train_sklearn_baseline:
+	python3 -m src.models.baseline_sklearn \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
+		--train_prng_key=0
+
 # Generate average user embeddings on the given dataset.
 embed:
 	python3 -m src.models.predict_model \
