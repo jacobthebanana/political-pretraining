@@ -345,7 +345,7 @@ def generate_keyword_counts(
     """
     output = np.zeros((len(texts), len(keywords)), dtype=int)
     for text_index, text in enumerate(texts):
-        words = text.split()
+        words = text.lower().split()
         for keyword_index, keyword in enumerate(keywords):
             count = words.count(keyword)
             if cap >= 0:
@@ -375,7 +375,7 @@ def load_keyword_list(data_args: DataConfig) -> List[str]:
         bag_of_words_keyword_lines = bag_of_words_keyword_csv_file.readlines()
 
     for keyword_entry in bag_of_words_keyword_lines:
-        keyword = keyword_entry.split()[0]
+        keyword = keyword_entry.split(",")[0]
         keyword = keyword.lstrip('"').rstrip('"')
         keywords.append(keyword)
 

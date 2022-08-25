@@ -16,6 +16,7 @@ from ..data.make_dataset import (
     split_dataset_by_uid,
     label_dataset,
     generate_keyword_counts,
+    load_keyword_list,
     _LOOKUP_DICT_SHARD_FOR_CONCATENATION,
 )
 from ..data.filter_label_file import shuffle_labels, split_labels, exclude_users
@@ -229,6 +230,15 @@ class FilterLabels(unittest.TestCase):
         self.assertNotIn("0,username_b,5", self.filtered_examples)
 
 
+class LoadKeywords(unittest.TestCase):
+    def setUp(self):
+        self.keyword_list = load_keyword_list(data_args)
+
+    def test_keyword_list_length(self):
+        for keyword in self.keyword_list:
+            self.assertNotIn('"', keyword)
+
+
 class GenerateKeywordCounts(unittest.TestCase):
     def setUp(self):
         self.example_texts = [
@@ -241,12 +251,18 @@ class GenerateKeywordCounts(unittest.TestCase):
         self.keywords = ["apple", "pineapple"]
 
     def test_count_array_shape(self):
-        count_array = generate_keyword_counts(self.example_texts, self.keywords)
+        keyword_count_output = generate_keyword_counts(
+            self.example_texts, self.keywords
+        )
+        count_array = keyword_count_output["input_ids"]
         self.assertEqual(count_array.shape[0], len(self.example_texts))
         self.assertEqual(count_array.shape[1], len(self.keywords))
 
     def test_count_without_cap(self):
-        count_array = generate_keyword_counts(self.example_texts, self.keywords, cap=-1)
+        keyword_count_output = generate_keyword_counts(
+            self.example_texts, self.keywords
+        )
+        count_array = keyword_count_output["input_ids"]
         self.assertListEqual(
             count_array[:, 0].tolist(), [1, 1, 1, 0, 1], "count of 'apple' without cap"
         )
@@ -257,7 +273,10 @@ class GenerateKeywordCounts(unittest.TestCase):
         )
 
     def test_count_with_cap_enabled(self):
-        count_array = generate_keyword_counts(self.example_texts, self.keywords, cap=1)
+        keyword_count_output = generate_keyword_counts(
+            self.example_texts, self.keywords
+        )
+        count_array = keyword_count_output["input_ids"]
         self.assertListEqual(
             count_array[:, 0].tolist(), [1, 1, 1, 0, 1], "count of 'apple' with cap 1"
         )
