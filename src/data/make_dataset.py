@@ -462,16 +462,23 @@ def label_dataset(
      DatasetDict: dataset with an additional "label" column.
     """
     output = {}
+    unique_uid_stats: Dict[str, int] = {}
+
     for split_key, split in dataset.items():
         label_column = np.zeros(len(split))
+        unique_uids = set()
+
         for index, entry in enumerate(
             tqdm(split, desc=f"labelling {split_key} split", ncols=80)
         ):
             uid = entry["uid"]
+            unique_uids.add(uid)
             label_column[index] = int(labels.get(uid, -1))
 
+        unique_uid_stats[split_key] = len(unique_uids)
         output[split_key] = split.add_column("label", label_column)
 
+    print("Unique uids in each split:", unique_uid_stats)
     return dataset_dict.DatasetDict(**output)
 
 
