@@ -213,17 +213,11 @@ preprocess_json_regression_baseline:
 		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
 
-setup_report_data: generate_filtered_label_file_with_test_labels \
-	generate_filtered_label_file_with_true_labels \
-	replace_validation_labels_with_true_labels \
-	replace_true_labels_with_test_labels \
+setup_report_data: generate_report_labels \
 	preprocess_json
 
 setup_report_data_baseline: download_baseline_keywords \
-	generate_filtered_label_file_with_test_labels \
-	generate_filtered_label_file_with_true_labels \
-	replace_validation_labels_with_true_labels \
-	replace_true_labels_with_test_labels \
+	generate_report_labels \
 	preprocess_json_regression_baseline
 
 show_dataset_stats: 
