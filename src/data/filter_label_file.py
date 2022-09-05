@@ -140,7 +140,10 @@ def main():
             filtered_labels.append(",".join(updated_entry_fields))
 
     num_entries = len(filtered_labels)
-    print(f"Writing filtered label file output; number of entries: {num_entries}.")
+    print(
+        f"Writing filtered label file output; number of entries: {num_entries}.",
+        data_args.filtered_label_path,
+    )
     with open(data_args.filtered_label_path, "w") as filtered_label_file:
         filtered_label_file.writelines([raw_labels[0]] + filtered_labels)
 
@@ -166,7 +169,8 @@ def main():
         )
 
     print(
-        f"Writing training label file output; number of entries: {len(train_labels)}."
+        f"Writing training label file output; number of entries: {len(train_labels)}.",
+        data_args.train_filtered_label_path,
     )
     with open(data_args.train_filtered_label_path, "w") as train_label_file:
         train_label_file.writelines([raw_labels[0]] + train_labels)
@@ -174,11 +178,15 @@ def main():
     print(
         "Writing validation label file output; number of entries:",
         f"{len(validation_labels)}.",
+        data_args.validation_filtered_label_path,
     )
     with open(data_args.validation_filtered_label_path, "w") as validation_label_file:
         validation_label_file.writelines([raw_labels[0]] + validation_labels)
 
-    print(f"Writing testing label file output; number of entries: {len(test_labels)}.")
+    print(
+        f"Writing testing label file output; number of entries: {len(test_labels)}.",
+        data_args.test_filtered_label_path,
+    )
     with open(data_args.test_filtered_label_path, "w") as test_label_file:
         test_label_file.writelines([raw_labels[0]] + test_labels)
 

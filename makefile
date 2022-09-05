@@ -57,7 +57,8 @@ merge_label_files:
 		--processed_true_label_path="data/interim/true_labels.csv"
 
 # Verify that all test labels are available as true labels and select
-# rows matching test_uids.
+# rows matching test_uids. Join uids from test_uids.csv with 
+# labels from true_labels.csv to generate test_labels.csv.
 select_test_uids: download_true_labels download_test_uids merge_label_files
 	python3 -m src.data.slice_labels \
 		"data/raw/test_uids.csv" \
@@ -105,6 +106,38 @@ generate_filtered_label_file_with_test_labels: select_test_uids
 		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--train_test_split_prng_seed=${train_test_split_prng_seed} \
 		--validation_ratio=${validation_ratio}
+
+# Genereate user label splits where:
+# - test: all selected "test" users, a subset of users with manual labels.
+# - validation: all users with manual labels, excluding ones in "test".
+# - train: all labelled users excluding ones with manual labels.
+generate_report_labels: select_test_uids
+# Split manually-labelled user ids into "test" (specified through test_uid)
+# and "validation" (all manually-labelled users excluding test users.)
+	python3 -m src.data.filter_label_file \
+		--use_true_label_for_test_split=1 \
+		--raw_label_path="data/interim/true_labels.csv" \
+		--processed_true_label_path="data/interim/test_labels.csv" \
+		--train_filtered_label_path="/dev/null" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
+		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--validation_ratio=1
+
+# Exclude manually-labelled users (users with uids in true_labels) from
+# train_users.
+	python3 -m src.data.filter_label_file \
+		--use_true_label_for_test_split=1 \
+		--raw_label_path="data/raw/user_labels.csv" \
+		--processed_true_label_path="data/interim/true_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path=/dev/null \
+		--test_filtered_label_path=/dev/null \
+		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
+		--filtered_label_path="data/interim/filtered_user_labels.csv" \
+		--validation_ratio=0
+
 
 generate_filtered_label_file_with_true_train_labels_and_test_labels: select_test_uids
 	python3 -m src.data.filter_label_file \
