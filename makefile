@@ -63,8 +63,8 @@ select_test_uids: download_true_labels download_test_uids merge_label_files
 	python3 -m src.data.slice_labels \
 		"data/raw/test_uids.csv" \
 		"data/interim/true_labels.csv" \
-		"data/interim/" \
-		"test_labels.csv"
+		"data/interim/${processed_dataset_suffix}_" \
+		"_test_labels.csv"
 
 select_test_uids_with_folds: download_true_labels download_test_uids merge_label_files convert_user_id_pkl_file
 	python3 -m src.data.slice_labels \
@@ -127,7 +127,7 @@ generate_report_labels:
 	python3 -m src.data.filter_label_file \
 		--use_true_label_for_test_split=1 \
 		--raw_label_path="data/interim/true_labels.csv" \
-		--processed_true_label_path="data/interim/test_labels.csv" \
+		--processed_true_label_path="data/interim/${processed_dataset_suffix}_${fold_key}_test_labels.csv" \
 		--train_filtered_label_path="/dev/null" \
 		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_validation_filtered_user_labels.csv" \
 		--test_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_test_filtered_user_labels.csv" \
@@ -283,7 +283,9 @@ train_cross_entropy_regression_baseline:
 train_sklearn_baseline: generate_report_labels preprocess_json_regression_baseline
 	python3 -m src.models.baseline_sklearn \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}${fold_key}" \
-		--train_prng_key=0
+		--train_prng_key=0 \
+		--wandb_entity=${wandb_entity} \
+		--wandb_project=${wandb_project}
 
 # Generate average user embeddings on the given dataset.
 embed:

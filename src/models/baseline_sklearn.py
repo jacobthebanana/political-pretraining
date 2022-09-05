@@ -1,6 +1,7 @@
 from typing import NamedTuple, List, Dict
 from socket import gethostname
 import datetime
+import os
 
 from sklearn.linear_model import LogisticRegression
 from datasets import load_from_disk
@@ -59,6 +60,8 @@ def main():
             "model_args": model_args.__dict__,
             "data_args": data_args.__dict__,
             "pipeline_args": pipeline_args.__dict__,
+            "baseline": "Preotiuc-Pietro",
+            "fold_key": os.environ.get("fold_key") 
         }
     )
 
