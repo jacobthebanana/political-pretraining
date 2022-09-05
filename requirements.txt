@@ -5,3 +5,4 @@ transformers
 typing_extensions
 torch[cpu]
 wandb
+numpy
