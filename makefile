@@ -7,9 +7,6 @@ setup_data_folder:
 	mkdir -pv data/processed
 	mkdir -pv data/artifacts
 
-download_data:
-	wget -O "data/raw/user_labels.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${USER_LABEL_DRIVE_FILE_ID}"
-
 download_text_csv:
 	wget -O "data/raw/tweets.tar.gz" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TWEET_TEXT_DRIVE_FILE_ID}"
 	tar -xzvf tweets.tar.gz --directory data/raw/
@@ -27,13 +24,20 @@ download_true_labels:
 	wget -O "data/raw/true_labels.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TRUE_USER_LABELS_FILE_ID}"
 	wget -O "data/interim/label_text_to_label_id.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${LABEL_TEXT_TO_ID_FILE_ID}"
 
+download_labels: download_true_labels
+	wget -O "data/raw/user_labels.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${USER_LABEL_DRIVE_FILE_ID}"
+
 download_test_uids:
 	wget -O "data/raw/test_uids.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_SUBSET_USER_FILE_ID}"
 
 download_baseline_keywords:
 	wget -O "data/raw/keywords.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${BASELINE_KEYWORD_FILE_ID}"
 
-download_text: download_text_csv download_text_json download_baseline_keywords
+download_text: download_text_json download_baseline_keywords download_test_uids
+
+convert_user_id_pkl_file:
+	wget -O "data/raw/test_user_id.pkl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_USER_ID_PKL_FILE_ID}"
+	python3 -m src.data.process_test_uid data/raw/test_user_id.pkl data/processed/test_user_id.json
 
 clean: 
 	rm -rf data/interim
@@ -44,15 +48,13 @@ clean_all: clean
 	rm -rf data/raw
 	rm -rf data/external
 
-
-setup: clean setup_data_folder download_data download_text
+setup: clean setup_data_folder download_labels download_text
 
 merge_label_files:
 	python3 -m src.data.merge_label_files \
 		--raw_true_label_jsonl_path="data/raw/true_labels.jsonl" \
 		--scree_name_to_uid_tsv_path="data/raw/screen_names.tsv" \
 		--processed_true_label_path="data/interim/true_labels.csv"
-
 
 # Verify that all test labels are available as true labels and select
 # rows matching test_uids.
