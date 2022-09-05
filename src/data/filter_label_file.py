@@ -61,7 +61,7 @@ def get_user_id(label_entry: str) -> str:
     Return the user id (str)field of the given label entry.
     """
     fields = label_entry.split(",")
-    return fields[-1]
+    return fields[-1].rstrip("\n")
 
 
 def exclude_users(labels: List[str], labels_to_exclude: List[str]) -> List[str]:

@@ -1,4 +1,6 @@
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Dict
+from socket import gethostname
+import datetime
 
 from sklearn.linear_model import LogisticRegression
 from datasets import load_from_disk
@@ -6,6 +8,7 @@ from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
 from transformers.hf_argparser import HfArgumentParser
 from tqdm.auto import tqdm
+import wandb
 
 from ..config import DataConfig, ModelConfig, PipelineConfig, NUM_TQDM_COLUMNS
 
@@ -46,6 +49,19 @@ def main():
     data_args: DataConfig
     pipeline_args: PipelineConfig
 
+    wandb.init(
+        entity=pipeline_args.wandb_entity,
+        project=pipeline_args.wandb_project,
+        name=datetime.datetime.now().isoformat() + "-" + gethostname(),
+    )
+    wandb.config.update(
+        {
+            "model_args": model_args.__dict__,
+            "data_args": data_args.__dict__,
+            "pipeline_args": pipeline_args.__dict__,
+        }
+    )
+
     processed_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
     processed_dataset: DatasetDict
 
@@ -56,10 +72,15 @@ def main():
         train_data.X, train_data.y
     )
 
-    validation_data = get_sklearn_data(processed_dataset, "validation")
+    stats: Dict[str, float] = {}
+    for split in ("validation", "test"):
+        data = get_sklearn_data(processed_dataset, split)
+        accuracy_score = clf.score(data.X, data.y)
+        print(f"{split} accuracy:", accuracy_score)
 
-    print("Validation accuracy:", clf.score(validation_data.X, validation_data.y))
+        stats[split + "_correct_users_ratio"] = accuracy_score
 
+    wandb.log(stats)
 
 if __name__ == "__main__":
     main()

@@ -29,6 +29,7 @@ download_labels: download_true_labels
 
 download_test_uids:
 	wget -O "data/raw/test_uids.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_SUBSET_USER_FILE_ID}"
+	wget -O "data/raw/test_user_id.pkl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_USER_ID_PKL_FILE_ID}"
 
 download_baseline_keywords:
 	wget -O "data/raw/keywords.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${BASELINE_KEYWORD_FILE_ID}"
@@ -36,8 +37,7 @@ download_baseline_keywords:
 download_text: download_text_json download_baseline_keywords download_test_uids
 
 convert_user_id_pkl_file:
-	wget -O "data/raw/test_user_id.pkl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_USER_ID_PKL_FILE_ID}"
-	python3 -m src.data.process_test_uid data/raw/test_user_id.pkl data/processed/test_user_id.json
+	python3 -m src.data.process_test_uid data/raw/test_user_id.pkl data/interim/test_user_id.json
 
 clean: 
 	rm -rf data/interim
@@ -63,7 +63,17 @@ select_test_uids: download_true_labels download_test_uids merge_label_files
 	python3 -m src.data.slice_labels \
 		"data/raw/test_uids.csv" \
 		"data/interim/true_labels.csv" \
-		"data/interim/test_labels.csv"
+		"data/interim/" \
+		"test_labels.csv"
+
+select_test_uids_with_folds: download_true_labels download_test_uids merge_label_files convert_user_id_pkl_file
+	python3 -m src.data.slice_labels \
+		"data/interim/test_user_id.json" \
+		"data/interim/true_labels.csv" \
+		"data/interim/${processed_dataset_suffix}_" \
+		"_test_labels.csv" \
+		--use_folds=1
+
 
 # Generate filtered label file where classifier label must be non-empty.
 generate_filtered_label_file:
@@ -111,7 +121,7 @@ generate_filtered_label_file_with_test_labels: select_test_uids
 # - test: all selected "test" users, a subset of users with manual labels.
 # - validation: all users with manual labels, excluding ones in "test".
 # - train: all labelled users excluding ones with manual labels.
-generate_report_labels: select_test_uids
+generate_report_labels:
 # Split manually-labelled user ids into "test" (specified through test_uid)
 # and "validation" (all manually-labelled users excluding test users.)
 	python3 -m src.data.filter_label_file \
@@ -119,8 +129,8 @@ generate_report_labels: select_test_uids
 		--raw_label_path="data/interim/true_labels.csv" \
 		--processed_true_label_path="data/interim/test_labels.csv" \
 		--train_filtered_label_path="/dev/null" \
-		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_test_filtered_user_labels.csv" \
 		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
 		--validation_ratio=1
@@ -131,7 +141,7 @@ generate_report_labels: select_test_uids
 		--use_true_label_for_test_split=1 \
 		--raw_label_path="data/raw/user_labels.csv" \
 		--processed_true_label_path="data/interim/true_labels.csv" \
-		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_train_filtered_user_labels.csv" \
 		--validation_filtered_label_path=/dev/null \
 		--test_filtered_label_path=/dev/null \
 		--label_text_to_label_id_path="data/interim/label_text_to_label_id.json" \
@@ -202,23 +212,20 @@ preprocess_json_regression_baseline:
 		--source_path="data/raw/tweets.json" \
 		--filtered_label_path="data/interim/filtered_user_labels.csv" \
 		--require_labels=${require_labels} \
-		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
-		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}/lookup_by_uid.json" \
-		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv" \
-		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}_validation_filtered_user_labels.csv" \
-		--test_filtered_label_path="data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv" \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}${fold_key}" \
+		--processed_lookup_by_uid_json_path="data/processed/tweets-${processed_dataset_suffix}${fold_key}/lookup_by_uid.json" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_train_filtered_user_labels.csv" \
+		--validation_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_validation_filtered_user_labels.csv" \
+		--test_filtered_label_path="data/interim/${processed_dataset_suffix}${fold_key}_test_filtered_user_labels.csv" \
 		--enable_indexing=0 \
 		--bag_of_words_baseline_enabled=1 \
 		--per_user_concatenation=${per_user_concatenation} \
 		--concatenation_delimiter=${concatenation_delimiter} \
 		--num_procs=${num_procs}
 
-setup_report_data: generate_report_labels \
-	preprocess_json
+setup_report_data: select_test_uids generate_report_labels preprocess_json
 
-setup_report_data_baseline: download_baseline_keywords \
-	generate_report_labels \
-	preprocess_json_regression_baseline
+setup_report_data_baseline: download_baseline_keywords select_test_uids_with_folds
 
 show_dataset_stats: 
 	python3 -m src.data.print_dataset_stats \
@@ -273,9 +280,9 @@ train_cross_entropy_regression_baseline:
 		--wandb_project=${wandb_project} \
 		--num_epochs=${num_epochs}
 
-train_sklearn_baseline:
+train_sklearn_baseline: generate_report_labels preprocess_json_regression_baseline
 	python3 -m src.models.baseline_sklearn \
-		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}" \
+		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}${fold_key}" \
 		--train_prng_key=0
 
 # Generate average user embeddings on the given dataset.
