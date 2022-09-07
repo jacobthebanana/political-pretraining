@@ -5,7 +5,7 @@ a JSON dictionary mapping uid to input_ids.
 If a uid appears in more than one tweets, the output will contain
 only the most recent tweet.
 """
-from typing import Dict, List, Any, Tuple, Union
+from typing import Dict, List, Any, Tuple, Optional
 from datasets import load_from_disk
 from datasets.dataset_dict import DatasetDict
 from datasets.arrow_dataset import Dataset
@@ -35,24 +35,30 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_dataset_path")
     parser.add_argument("output_json_path")
+    parser.add_argument("--splits", nargs="+", required=False)
 
     args = parser.parse_args()
     input_dataset_path: str = args.input_dataset_path
     output_json_path: str = args.output_json_path
+    splits: Optional[List[str]] = args.splits
 
     # Load dataset
     dataset_dict = load_from_disk(input_dataset_path)  # type: ignore
     dataset_dict: DatasetDict
+    if splits is None:
+        splits = list(dataset_dict.keys())
 
     # Initialize output dictionary Dict[str, List[int]]
     output: Dict[str, List[int]] = {}
 
     # Iterate through dataset, extracting uid and input_ids
     # Update output dictionary if necessary
-    for split_name, dataset in dataset_dict.items():
-        for entry in tqdm(
+    for split_name in splits:
+        dataset = dataset_dict[split_name]
+        for entry in tqdm( # type: ignore
             dataset, ncols=NUM_TQDM_COLUMNS, desc="Exporting {}".format(split_name)
         ):
+            entry: Dict[DatasetFeatures, Any]
             key, value = extract_key_and_value(entry)
             output[key] = value
 
