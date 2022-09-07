@@ -287,6 +287,11 @@ train_sklearn_baseline: generate_report_labels preprocess_json_regression_baseli
 		--wandb_entity=${wandb_entity} \
 		--wandb_project=${wandb_project}
 
+export_bag_of_word_feature_vectors:
+	python3 -m src.data.export_dataset \
+		"data/processed/tweets-${processed_dataset_suffix}0" \
+		"data/artifacts/bag-of-word-feature-vectors.json"
+
 # Generate average user embeddings on the given dataset.
 embed:
 	python3 -m src.models.predict_model \
