@@ -38,7 +38,7 @@ from ..models.train_model_cross_entropy import (
     get_classification_dataloader,
     get_num_classes,
     _train_step as _train_step_cross_entropy,
-    get_test_stats as get_test_stats_cross_entropy,
+    get_test_stats_and_predictions as get_test_stats_cross_entropy,
     get_predictions_from_batch_output,
     get_most_popular_label,
     update_user_predictions,

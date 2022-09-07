@@ -3,10 +3,12 @@ Functions for training with classification objective with
 a cross-entropy loss.
 """
 from typing import Iterator, Tuple, Dict, List, Any
+from typing_extensions import NamedTuple
 from collections import defaultdict, Counter
 import json
 from socket import gethostname
 import datetime
+import os
 
 import jax
 import jax.numpy as jnp
@@ -87,13 +89,17 @@ def get_classification_dataloader(
     for j in range(num_batches):
         indices_in_batch = indices[j * actual_batch_size : (j + 1) * actual_batch_size]
         examples: Dict[DatasetFeatures, Array] = dataset[indices_in_batch]
+        input_ids: Array = jnp.array(examples["input_ids"])  # type: ignore
+        attention_mask: Array = jnp.array(examples["attention_mask"])  # type: ignore
+        labels: Array = jnp.array(examples["label"], dtype=int)  # type: ignore
+
         tokens: TokenizerOutput = {
-            "input_ids": jnp.array(examples["input_ids"]),
-            "attention_mask": jnp.array(examples["attention_mask"]),
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
         }
         batch = LabelledBatch(
             tokens=tokens,
-            labels=jnp.array(examples["label"], dtype=int),
+            labels=labels,
             loss_mask=jnp.ones(actual_batch_size),
         )
 
@@ -106,7 +112,7 @@ def get_classification_dataloader(
         padding_length = actual_batch_size - num_trailing_examples
 
         # (num_trailing_examples, max_length)
-        input_ids = jnp.array(trailing_examples["input_ids"])
+        input_ids: Array = jnp.array(trailing_examples["input_ids"])  # type: ignore
         input_ids_padded = jnp.pad(
             input_ids,
             ((0, padding_length), (0, 0)),  # Pad only the batch dimension.
@@ -115,7 +121,7 @@ def get_classification_dataloader(
         )
 
         # (num_trailing_examples, )
-        attention_mask = jnp.array(trailing_examples["attention_mask"])
+        attention_mask: Array = jnp.array(trailing_examples["attention_mask"])  # type: ignore
         attention_mask_padded = jnp.pad(
             attention_mask,
             ((0, padding_length), (0, 0)),  # Pad only the batch dimension.
@@ -124,7 +130,7 @@ def get_classification_dataloader(
         )
 
         # (num_trailing_examples, )
-        labels = jnp.array(trailing_examples["label"], dtype=int)
+        labels: Array = jnp.array(trailing_examples["label"], dtype=int)  # type: ignore
         labels_padded = jnp.pad(
             labels, ((0, padding_length),), mode="constant", constant_values=-1
         )
@@ -427,14 +433,19 @@ def get_fraction_correct_users(
     return num_correct_users / num_labelled_users
 
 
-def get_test_stats(
+class StatsAndPredictions(NamedTuple):
+    stats: Dict[str, float]
+    predictions: Dict[str, int]
+
+
+def get_test_stats_and_predictions(
     test_dataset: Dataset,
     test_batch_size: int,
     model: FlaxRobertaForSequenceClassification,
     replicated_model_params: ReplicatedModelParams,
     user_labels: LabelByUID,
     metric_prefix: str = "eval",
-) -> Dict[str, float]:
+) -> StatsAndPredictions:
     """
     Returns test stats.
     """
@@ -498,7 +509,13 @@ def get_test_stats(
     for key, values in stats.items():
         stats_output[key] = sum(values) / len(values)
 
-    return stats_output
+    majority_vote_predictions: Dict[str, int] = {}
+    for user_id, user_predictions in per_user_predictions.items():
+        majority_vote_predictions[user_id] = get_most_popular_label(user_predictions)
+
+    return StatsAndPredictions(
+        stats=stats_output, predictions=majority_vote_predictions
+    )
 
 
 def get_num_classes(data_args: DataConfig) -> int:
@@ -605,19 +622,30 @@ def main():
         ):
             if batch_index % pipeline_args.eval_every_num_batches == 0:
                 eval_stats = {}
-                for eval_split_key in ("validation", "test"):
-                    eval_dataset = split_dataset[eval_split_key]
+                user_predictions: Dict[str, int] = {}
+                for eval_split_name in ("validation", "test"):
+                    eval_dataset = split_dataset[eval_split_name]
+                    split_output = get_test_stats_and_predictions(
+                        eval_dataset,
+                        pipeline_args.eval_per_device_batch_size,
+                        model,
+                        replicated_model_params,
+                        eval_labels,
+                        metric_prefix=eval_split_name,
+                    )
+
                     eval_stats = dict(
                         **eval_stats,
-                        **get_test_stats(
-                            eval_dataset,
-                            pipeline_args.eval_per_device_batch_size,
-                            model,
-                            replicated_model_params,
-                            eval_labels,
-                            metric_prefix=eval_split_key,
-                        ),
+                        **(split_output.stats),
                     )
+                    user_predictions = dict(
+                        **user_predictions, **(split_output.predictions)
+                    )
+
+                model_folder = get_model_name(data_args)
+                prediction_json_path = os.path.join(model_folder, "predictions.json")
+                with open(prediction_json_path, "w") as prediction_json_file:
+                    json.dump(user_predictions, prediction_json_file, indent=2)
 
             else:
                 eval_stats: Dict[MetricKeys, float] = {}
