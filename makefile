@@ -280,12 +280,16 @@ train_cross_entropy_regression_baseline:
 		--wandb_project=${wandb_project} \
 		--num_epochs=${num_epochs}
 
-train_sklearn_baseline: generate_report_labels preprocess_json_regression_baseline
+train_sklearn_baseline_: 
 	python3 -m src.models.baseline_sklearn \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}${fold_key}" \
 		--train_prng_key=0 \
 		--wandb_entity=${wandb_entity} \
 		--wandb_project=${wandb_project}
+
+train_sklearn_baseline: generate_report_labels \
+	preprocess_json_regression_baseline \
+	train_sklearn_baseline
 
 export_bag_of_word_feature_vectors:
 	python3 -m src.data.export_dataset \
@@ -304,6 +308,20 @@ embed:
 		--base_model_name=${base_model_name} \
 		--eval_per_device_batch_size=${eval_per_device_batch_size} \
 		--pooling_strategy=${pooling_strategy}
+
+evaluate_on_folds_:
+	python3 -m src.data.n_fold_accuracy \
+		--label_csv_path="data/interim/true_labels.csv" \
+		--fold_json_path="data/interim/test_user_id.json" \
+		--prediction_json_path=${prediction_json_path} \
+		--fold_key=${fold_key} \
+		--wandb_entity=${wandb_entity} \
+		--wandb_project=${wandb_project}
+
+evaluate_on_folds: download_true_labels \ 
+	merge_label_files \
+	convert_user_id_pkl_file \
+	evaluate_on_folds_
 
 # Set up truncated dataset for testing.
 setup_data_tests: generate_filtered_label_file
