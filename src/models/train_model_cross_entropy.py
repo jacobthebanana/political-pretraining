@@ -618,7 +618,12 @@ def main():
         )
 
         for batch_index, (batch, _) in enumerate(
-            tqdm(train_dataloader, ncols=80, total=num_train_batches_per_epoch)
+            tqdm(
+                train_dataloader,
+                ncols=80,
+                total=num_train_batches_per_epoch,
+                leave=False,
+            )
         ):
             if batch_index % pipeline_args.eval_every_num_batches == 0:
                 eval_stats = {}
@@ -638,9 +643,9 @@ def main():
                         **eval_stats,
                         **(split_output.stats),
                     )
-                    user_predictions = dict(
-                        **user_predictions, **(split_output.predictions)
-                    )
+                    user_predictions = {}
+                    for user_id, user_prediction in split_output.predictions.items():
+                        user_predictions[user_id] = user_prediction
 
                 model_folder = get_model_name(data_args)
                 prediction_json_path = os.path.join(model_folder, "predictions.json")
