@@ -648,6 +648,7 @@ def main():
                         user_predictions[user_id] = user_prediction
 
                 model_folder = get_model_name(data_args)
+                os.makedirs(model_folder, exist_ok=True)
                 prediction_json_path = os.path.join(model_folder, "predictions.json")
                 with open(prediction_json_path, "w") as prediction_json_file:
                     json.dump(user_predictions, prediction_json_file, indent=2)
