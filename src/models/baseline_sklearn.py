@@ -128,6 +128,7 @@ def main():
         print(f"{split} accuracy", accuracy_score)
 
         stats[split + "_correct_users_ratio"] = accuracy_score
+        stats[split + "_num_users"] = len(data.y)
 
         for user_id, prediction in zip(data.user_ids, predictions):
             per_user_predictions[user_id] = prediction
