@@ -25,7 +25,8 @@ download_true_labels:
 	wget -O "data/interim/label_text_to_label_id.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${LABEL_TEXT_TO_ID_FILE_ID}"
 
 download_labels: download_true_labels
-	wget -O "data/raw/user_labels.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${USER_LABEL_DRIVE_FILE_ID}"
+	wget -O "data/raw/user_labels.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${USER_LABEL_DRIVE_FILE_ID}"
+	python3 -m src.data.convert_jsonl_label "data/raw/user_labels.jsonl" "data/raw/user_labels.csv"
 
 download_test_uids:
 	wget -O "data/raw/test_uids.csv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TEST_SUBSET_USER_FILE_ID}"
@@ -53,7 +54,7 @@ setup: clean setup_data_folder download_labels download_text
 merge_label_files:
 	python3 -m src.data.merge_label_files \
 		--raw_true_label_jsonl_path="data/raw/true_labels.jsonl" \
-		--scree_name_to_uid_tsv_path="data/raw/screen_names.tsv" \
+		--screen_name_to_uid_tsv_path="data/raw/screen_names.tsv" \
 		--processed_true_label_path="data/interim/true_labels.csv"
 
 # Verify that all test labels are available as true labels and select
@@ -283,13 +284,13 @@ train_cross_entropy_regression_baseline:
 train_sklearn_baseline_: 
 	python3 -m src.models.baseline_sklearn \
 		--processed_dataset_path="data/processed/tweets-${processed_dataset_suffix}${fold_key}" \
-		--train_prng_key=0 \
+		--train_prng_key=${seed} \
 		--wandb_entity=${wandb_entity} \
 		--wandb_project=${wandb_project}
 
 train_sklearn_baseline: generate_report_labels \
 	preprocess_json_regression_baseline \
-	train_sklearn_baseline
+	train_sklearn_baseline_
 
 export_bag_of_word_feature_vectors:
 	python3 -m src.data.export_dataset \

@@ -15,7 +15,7 @@ def main():
 
     labels = pd.read_json(data_args.raw_true_label_jsonl_path, lines=True)
     screen_names = pd.read_csv(
-        data_args.scree_name_to_uid_tsv_path,
+        data_args.screen_name_to_uid_tsv_path,
         delimiter="\t",
     )
     uid_labels = screen_names.merge(labels, on="screen_name")

@@ -36,6 +36,7 @@ from ..config import (
     LabelByUID,
     UserID,
     CONCATENATION_DELIMITER_MAP,
+    NUM_TQDM_COLUMNS,
 )
 
 Dataset = datasets.arrow_dataset.Dataset
@@ -595,6 +596,10 @@ def main():
             test_user_labels.keys(),
             data_args,
         )
+
+        for label_lookup in (validation_user_labels, test_user_labels):
+            for user_id, label in tqdm(label_lookup.items(), ncols=NUM_TQDM_COLUMNS):
+                full_user_labels[user_id] = label
 
         print("Labelling")
         labelled_dataset = label_dataset(split_raw_dataset, full_user_labels)
