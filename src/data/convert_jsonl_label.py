@@ -14,7 +14,11 @@ def main():
     input_jsonl_path: str = args.input_jsonl_path
     output_csv_path: str = args.output_csv_path
 
-    labels = pd.read_json(input_jsonl_path, lines=True)
+    labels = pd.read_json(
+        input_jsonl_path,
+        lines=True,
+        dtype={"UID": str},  # type: ignore
+    )
     print(f"Input: json-lines labels {input_jsonl_path}")
     print(f"Output: csv labels {output_csv_path}")
     print(f"Parsed {len(labels)} entries")

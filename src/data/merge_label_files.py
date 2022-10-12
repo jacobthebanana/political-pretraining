@@ -1,3 +1,6 @@
+from typing import List, Dict
+import json
+
 from transformers.hf_argparser import HfArgumentParser
 import pandas as pd
 from collections import Counter
@@ -13,7 +16,11 @@ def main():
     (data_args,) = parser.parse_args_into_dataclasses()
     data_args: DataConfig
 
-    labels = pd.read_json(data_args.raw_true_label_jsonl_path, lines=True)
+    labels = pd.read_json(
+        data_args.raw_true_label_jsonl_path,
+        lines=True,
+        dtype={"user_id": str},  # type: ignore
+    )
     screen_names = pd.read_csv(
         data_args.screen_name_to_uid_tsv_path,
         delimiter="\t",
