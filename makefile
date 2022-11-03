@@ -1,6 +1,4 @@
-include .env
-
-setup_data_folder: 
+ setup_data_folder: 
 	mkdir -pv data/raw
 	mkdir -pv data/external
 	mkdir -pv data/interim
@@ -13,7 +11,6 @@ download_text_csv:
 
 download_text_json:
 	wget -O "data/raw/tweets.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TWEET_JSON_DRIVE_FILE_ID}"
-	sed -i 's/#//g' "data/raw/tweets.json"
 
 download_politician_json:
 	wget -O "data/raw/politician_tweets.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${POLITICIAN_TWEET_FILE_ID}"
@@ -23,6 +20,7 @@ download_true_labels:
 	wget -O "data/raw/screen_names.tsv" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${SCREEN_NAMES_TSV_FILE_ID}"
 	wget -O "data/raw/true_labels.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${TRUE_USER_LABELS_FILE_ID}"
 	wget -O "data/interim/label_text_to_label_id.json" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${LABEL_TEXT_TO_ID_FILE_ID}"
+	python3 -m src.data.convert_jsonl_label "data/raw/true_labels.jsonl" "data/raw/true_labels.csv"
 
 download_labels: download_true_labels
 	wget -O "data/raw/user_labels.jsonl" "${GOOGLE_DRIVE_EXPORT_LINK_PREFIX}&id=${USER_LABEL_DRIVE_FILE_ID}"
@@ -56,18 +54,18 @@ merge_label_files:
 		--raw_true_label_jsonl_path="data/raw/true_labels.jsonl" \
 		--screen_name_to_uid_tsv_path="data/raw/screen_names.tsv" \
 		--processed_true_label_path="data/interim/true_labels.csv"
-
+ 
 # Verify that all test labels are available as true labels and select
 # rows matching test_uids. Join uids from test_uids.csv with 
 # labels from true_labels.csv to generate test_labels.csv.
-select_test_uids: download_true_labels download_test_uids merge_label_files
+select_test_uids: merge_label_files
 	python3 -m src.data.slice_labels \
 		"data/raw/test_uids.csv" \
 		"data/interim/true_labels.csv" \
 		"data/interim/${processed_dataset_suffix}_" \
 		"_test_labels.csv"
 
-select_test_uids_with_folds: download_true_labels download_test_uids merge_label_files convert_user_id_pkl_file
+select_test_uids_with_folds: merge_label_files convert_user_id_pkl_file
 	python3 -m src.data.slice_labels \
 		"data/interim/test_user_id.json" \
 		"data/interim/true_labels.csv" \

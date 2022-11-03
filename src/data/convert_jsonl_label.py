@@ -23,9 +23,16 @@ def main():
     print(f"Output: csv labels {output_csv_path}")
     print(f"Parsed {len(labels)} entries")
 
-    labels.to_csv(
-        output_csv_path, columns=["classifier_label", "screen_name", "UID"], index=False
-    )
+    if "true_label" in labels.keys():
+        labels.to_csv(
+            output_csv_path, columns=["true_label", "screen_name"], index=False
+        )
+    else:
+        labels.to_csv(
+            output_csv_path,
+            columns=["classifier_label", "screen_name", "UID"],
+            index=False,
+        )
 
 
 if __name__ == "__main__":

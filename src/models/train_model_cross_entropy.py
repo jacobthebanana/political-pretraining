@@ -2,7 +2,7 @@
 Functions for training with classification objective with 
 a cross-entropy loss.
 """
-from typing import Iterator, Tuple, Dict, List, Any
+from typing import Iterator, Tuple, Dict, List, Any, Union
 from typing_extensions import NamedTuple
 from collections import defaultdict, Counter
 import json
@@ -24,6 +24,7 @@ from transformers import FlaxRobertaForSequenceClassification
 from transformers.hf_argparser import HfArgumentParser
 from transformers.modeling_flax_outputs import FlaxSequenceClassifierOutput
 from tqdm.auto import tqdm
+from rich.progress import track
 import wandb
 
 from ..config import (
@@ -76,7 +77,10 @@ def get_classification_dataloader(
      (num_devices, per_device_batch_size, ...)
      Dict[str, Any]: Raw examples from the dataset.
     """
-    actual_batch_size = jax.device_count() * per_device_batch_size
+    assert (
+        per_device_batch_size % jax.device_count() == 0
+    ), "Batch size must be divisble by device count"
+    actual_batch_size = per_device_batch_size
     num_examples = len(dataset)
     num_batches = num_examples // actual_batch_size
     num_divisible_examples = num_batches * actual_batch_size
@@ -330,7 +334,7 @@ def get_num_batches(dataset: Dataset, per_device_batch_size: int) -> int:
     Returns:
      int: number of regular batches, plus one if there is a trailing batch.
     """
-    actual_batch_size = per_device_batch_size * jax.device_count()
+    actual_batch_size = per_device_batch_size
     num_regular_batches = len(dataset) // actual_batch_size
     num_trailing_examples = len(dataset) - num_regular_batches * actual_batch_size
 
@@ -369,8 +373,8 @@ def get_predictions_from_batch_output(eval_output: EvalStepOutput) -> List[int]:
      List[int]: list of label integers in the order in which they appear in the
         flattened array. Only entries where loss_mask == 1 would be included.
     """
-    predictions: Array = eval_output.predictions.astype(int).flatten().tolist()
-    loss_masks: Array = eval_output.loss_mask.astype(int).flatten().tolist()
+    predictions: List[int] = eval_output.predictions.astype(int).flatten().tolist()
+    loss_masks: List[int] = eval_output.loss_mask.astype(int).flatten().tolist()
 
     assert isinstance(predictions[0], int)
     assert isinstance(loss_masks[0], int)
@@ -443,7 +447,7 @@ def get_test_stats_and_predictions(
     test_batch_size: int,
     model: FlaxRobertaForSequenceClassification,
     replicated_model_params: ReplicatedModelParams,
-    user_labels: LabelByUID,
+    user_labels: Union[LabelByUID, None],
     metric_prefix: str = "eval",
 ) -> StatsAndPredictions:
     """
@@ -458,11 +462,10 @@ def get_test_stats_and_predictions(
     correct_by_user: Dict[UserID, List[bool]] = defaultdict(list)
 
     per_user_predictions: PerUserPredictions = {}
-    for batch, examples in tqdm(
+    for batch, examples in track(
         test_dataloader,
         total=num_test_batches,
-        ncols=80,
-        desc=f"Evaluating {metric_prefix}",
+        description=f"Evaluating {metric_prefix}",
     ):
         eval_output = _eval_step(batch, model, replicated_model_params, metric_prefix)
         batch_stats = eval_output.metrics
@@ -500,14 +503,16 @@ def get_test_stats_and_predictions(
 
     stats_output: Dict[str, float] = {}
 
-    if num_users > 0:
+    if num_users > 0 and (user_labels is not None):
         stats_output[metric_prefix + "_user_accuracy"] = user_accuracy_tally / num_users
         stats_output[
             metric_prefix + "_correct_users_ratio"
         ] = get_fraction_correct_users(per_user_predictions, user_labels)
 
-    for key, values in stats.items():
-        stats_output[key] = sum(values) / len(values)
+        for key, values in stats.items():
+            stats_output[key] = sum(values) / len(values)
+    else:
+        stats_output = {}
 
     majority_vote_predictions: Dict[str, int] = {}
     for user_id, user_predictions in per_user_predictions.items():
