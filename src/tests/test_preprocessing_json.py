@@ -4,6 +4,7 @@ import json
 
 import datasets
 from datasets import load_from_disk
+from transformers import AutoTokenizer
 
 from ..data.make_dataset import (
     create_raw_hf_dataset,
@@ -20,7 +21,13 @@ from ..data.make_dataset import (
     _LOOKUP_DICT_SHARD_FOR_CONCATENATION,
 )
 from ..data.filter_label_file import shuffle_labels, split_labels, exclude_users
-from ..config import ModelConfig, DataConfig, DatasetFeatures
+from ..config import (
+    ModelConfig,
+    DataConfig,
+    DatasetFeatures,
+    DEFAULT_HF_MODEL,
+    CONCATENATION_DELIMITER_MAP,
+)
 
 Dataset = datasets.arrow_dataset.Dataset
 
@@ -189,6 +196,22 @@ class ConcatenateByUID(unittest.TestCase):
         )
         for text in dataset_output["text"]:
             self.assertLessEqual(len(text.split()), model_args.max_seq_length)
+
+    def test_tokenizer_sep_token_handling(self):
+        tokenizer = AutoTokenizer.from_pretrained(DEFAULT_HF_MODEL)
+        example_words = ["apple", "banana"]
+
+        sep_concatenated_input = CONCATENATION_DELIMITER_MAP["sep"].join(example_words)
+
+        tokenizer_output = tokenizer(sep_concatenated_input)
+        tokenizer_output_ref = tokenizer(example_words[0], example_words[1])
+
+        self.assertListEqual(
+            tokenizer_output.input_ids,
+            tokenizer_output_ref.input_ids,
+            "Tokenizer output mismatch: "
+            + str((tokenizer_output.tokens(), tokenizer_output_ref.tokens())),
+        )
 
 
 class PreprocessAndTokenizeDataset(unittest.TestCase):

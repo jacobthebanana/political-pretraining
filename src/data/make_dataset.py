@@ -260,7 +260,7 @@ def _concatenate_by_uid_on_shard(
                 if shard.data_args.bag_of_words_baseline_enabled:
                     new_length = -1
                 else:
-                    new_length = len(tokenizer(text_buffer + user_text)["input_ids"])
+                    new_length = len(tokenizer(text_buffer + user_text).input_ids)
 
                 if new_length >= shard.model_args.max_seq_length:
                     output["uid"].append(uid)

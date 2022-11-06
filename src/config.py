@@ -27,6 +27,8 @@ LabelByUID = Dict[UserID, int]
 
 NUM_TQDM_COLUMNS = 80
 
+DEFAULT_HF_MODEL = "roberta-base"
+
 
 class PoolingStrategy(Enum):
     CLS_EMBEDDING_WITH_DENSE_LAYER = "cls_embedding_with_dense_layer"
@@ -47,12 +49,14 @@ class DistanceFunction(Enum):
 CONCATENATION_DELIMITER_MAP = {
     "space": " ",
     "newline": "\n",
+    "sep": "</s></s>",  # NOTE: Specific to RoBERTa
+    # Crafted user input might trigger unexpected behavior
 }
 
 
 @dataclass(frozen=True)
 class ModelConfig:
-    base_model_name: str = field(default="roberta-base")
+    base_model_name: str = field(default=DEFAULT_HF_MODEL)
     max_seq_length: int = field(default=128)
     pooling_strategy: PoolingStrategy = field(
         default=PoolingStrategy.CLS_EMBEDDING_WITH_DENSE_LAYER
