@@ -39,6 +39,7 @@ class PoolingStrategy(Enum):
 class ConcatenationDelimiter(Enum):
     SPACE = "space"
     NEWLINE = "newline"
+    SEP = "sep"
 
 
 class DistanceFunction(Enum):
