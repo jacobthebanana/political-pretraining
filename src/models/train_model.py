@@ -469,7 +469,7 @@ def _train_step_single_shard(
             "training_loss": training_loss_pmean,
             "training_loss_net": training_loss_pmean - model_args.triplet_threshold,
         },
-        model_params=updated_model_params,
+        trainable_params=updated_model_params,
         optimizer_state=updated_optimizer_state,
     )
 
@@ -601,7 +601,7 @@ def main():
                 replicated_optimizer_state,
             )
 
-            replicated_model_params = train_step_output.model_params
+            replicated_model_params = train_step_output.trainable_params
             replicated_optimizer_state = train_step_output.optimizer_state
 
             training_metrics = unreplicate(train_step_output.metrics)

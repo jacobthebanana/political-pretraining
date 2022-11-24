@@ -156,7 +156,8 @@ def get_classification_dataloader(
 def _loss_accuracy_fn_single_shard(
     batch: LabelledBatch,
     model: FlaxRobertaForSequenceClassification,
-    model_params: Dict,
+    trainable_params: Dict,
+    non_trainable_params: Dict,
 ) -> Tuple[Array, Tuple[Array, Array]]:
     """
     Return the loss and accuracy of the given model
@@ -170,6 +171,7 @@ def _loss_accuracy_fn_single_shard(
     Returns:
      cross-entropy loss, (classification accuracy, and predictions).
     """
+    model_params = {**trainable_params, **non_trainable_params}
     output = model(**(batch.tokens), params=model_params)  # type: ignore
     output: FlaxSequenceClassifierOutput
     logits: Array = output.logits
@@ -199,7 +201,8 @@ def _loss_accuracy_fn_single_shard(
 def _grad_accuracy_fn_single_shard(
     batch: LabelledBatch,
     model: FlaxRobertaForSequenceClassification,
-    model_params: ModelParams,
+    trainable_params: ModelParams,
+    non_trainable_params: ModelParams,
 ) -> Tuple[Tuple[Array, Tuple[Array, Array]], optax.Updates]:
     ...
 
@@ -229,7 +232,7 @@ def _eval_step_single_shard(
      Dict[str, Array]: non-replicated model stats.
     """
     loss, (accuracy, predictions) = _loss_accuracy_fn_single_shard(
-        batch, model, model_params
+        batch, model, model_params, {}
     )
     loss, accuracy = jax.lax.pmean((loss, accuracy), axis_name="data")
 
@@ -264,7 +267,8 @@ _eval_step = jax.pmap(
 def _train_step_single_shard(
     batch: LabelledBatch,
     model: FlaxRobertaForSequenceClassification,
-    model_params: ModelParams,
+    trainable_params: ModelParams,
+    non_trainable_params: ModelParams,
     optimizer: optax.GradientTransformation,
     optimizer_state: optax.OptState,
 ) -> TrainStepOutput:
@@ -283,7 +287,7 @@ def _train_step_single_shard(
      TrainStepOutput: non-replicated model parameters and stats.
     """
     (loss, (accuracy, _)), param_grad = _grad_accuracy_fn_single_shard(
-        batch, model, model_params
+        batch, model, trainable_params, non_trainable_params
     )
 
     (loss, accuracy), param_grad = jax.lax.pmean(
@@ -291,9 +295,9 @@ def _train_step_single_shard(
     )
 
     updates, new_optimizer_state = optimizer.update(
-        param_grad, optimizer_state, params=model_params
+        param_grad, optimizer_state, params=trainable_params
     )
-    new_model_params = optax.apply_updates(model_params, updates)
+    new_trainable_params = optax.apply_updates(trainable_params, updates)
 
     metrics: Dict[MetricKeys, Array] = {
         "training_loss": loss,
@@ -302,7 +306,7 @@ def _train_step_single_shard(
 
     return TrainStepOutput(
         metrics=metrics,
-        model_params=new_model_params,
+        trainable_params=new_trainable_params,
         optimizer_state=new_optimizer_state,
     )
 
@@ -310,7 +314,8 @@ def _train_step_single_shard(
 def _train_step(
     batch: LabelledBatch,
     model: FlaxRobertaForSequenceClassification,
-    model_params: ReplicatedModelParams,
+    trainable_params: ReplicatedModelParams,
+    non_trainable_params: ReplicatedModelParams,
     optimizer: optax.GradientTransformation,
     optimizer_state: optax.OptState,
 ) -> TrainStepOutput:
@@ -318,7 +323,7 @@ def _train_step(
 
 
 _train_step = jax.pmap(
-    _train_step_single_shard, axis_name="data", static_broadcasted_argnums=(1, 3)
+    _train_step_single_shard, axis_name="data", static_broadcasted_argnums=(1, 4)
 )
 
 
@@ -446,7 +451,8 @@ def get_test_stats_and_predictions(
     test_dataset: Dataset,
     test_batch_size: int,
     model: FlaxRobertaForSequenceClassification,
-    replicated_model_params: ReplicatedModelParams,
+    replicated_trainable_params: ReplicatedModelParams,
+    replicated_non_trainable_params: ReplicatedModelParams,
     user_labels: Union[LabelByUID, None],
     metric_prefix: str = "eval",
 ) -> StatsAndPredictions:
@@ -461,6 +467,10 @@ def get_test_stats_and_predictions(
     stats: Dict[str, List[float]] = defaultdict(list)
     correct_by_user: Dict[UserID, List[bool]] = defaultdict(list)
 
+    replicated_model_params = {
+        **replicated_trainable_params,  # type: ignore
+        **replicated_non_trainable_params,  # type: ignore
+    }
     per_user_predictions: PerUserPredictions = {}
     for batch, examples in track(
         test_dataloader,
@@ -572,16 +582,23 @@ def main():
         linear_regression_model = LinearRegression(num_label_classes)
         param_init_prng_key = jax.random.PRNGKey(pipeline_args.param_init_prng_key)
 
-        model_params = linear_regression_model.init(
+        trainable_params = linear_regression_model.init(
             param_init_prng_key, jnp.ones(num_keywords)
         )
+        non_trainable_params = {}
         model = linear_regression_model.get_duck_typed_model()  # type: ignore
     else:
         model = FlaxRobertaForSequenceClassification.from_pretrained(
             model_args.base_model_name, num_labels=num_label_classes, from_pt=True
         )  # type: ignore
         model: FlaxRobertaForSequenceClassification
-        model_params = model.params
+        if model_args.linear_probing_baseline_enabled:
+            trainable_params = {"classifier": model.params.pop("classifier")}
+            non_trainable_params = model.params
+            assert "classifier" not in non_trainable_params.keys()
+        else:
+            trainable_params = model.params
+            non_trainable_params = {}
 
     train_dataset = split_dataset["train"]
     num_train_batches_per_epoch = get_num_batches(
@@ -594,9 +611,10 @@ def main():
     )
     optimizer = optax.adamw(lr_schedule, weight_decay=model_args.weight_decay)
     # Initialize optimizer with original (non-replicated) model parameters
-    optimizer_state = optimizer.init(model_params)
+    optimizer_state = optimizer.init(trainable_params)
 
-    replicated_model_params = replicate(model_params)
+    replicated_trainable_params = replicate(trainable_params)
+    replicated_non_trainable_params = replicate(non_trainable_params)
     replicated_optimizer_state = replicate(optimizer_state)
 
     eval_labels = load_labels(data_args.validation_filtered_label_path)
@@ -639,7 +657,8 @@ def main():
                         eval_dataset,
                         pipeline_args.eval_per_device_batch_size,
                         model,
-                        replicated_model_params,
+                        replicated_trainable_params,
+                        replicated_non_trainable_params,
                         eval_labels,
                         metric_prefix=eval_split_name,
                     )
@@ -664,11 +683,12 @@ def main():
             train_step_output = _train_step(
                 batch,
                 model,
-                replicated_model_params,
+                replicated_trainable_params,
+                replicated_non_trainable_params,
                 optimizer,
                 replicated_optimizer_state,
             )
-            replicated_model_params = train_step_output.model_params
+            replicated_trainable_params = train_step_output.trainable_params
             replicated_optimizer_state = train_step_output.optimizer_state
 
             train_stats = unreplicate(train_step_output.metrics)
@@ -680,7 +700,8 @@ def main():
                 and not data_args.bag_of_words_baseline_enabled
             ):
                 model_name = get_model_name(data_args)
-                model_params = unreplicate(replicated_model_params)
+                trainable_params = unreplicate(replicated_trainable_params)
+                model_params = {**trainable_params, **non_trainable_params}
                 model.save_pretrained(model_name, params=jax.device_get(model_params))
 
 

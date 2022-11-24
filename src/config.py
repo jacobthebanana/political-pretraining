@@ -69,6 +69,7 @@ class ModelConfig:
     # Whether mask out triplets where the author of anc and pos are from
     # the same category as the author of neg.
     enable_masking: bool = field(default=False)
+    linear_probing_baseline_enabled: bool = field(default=False)
 
 
 @dataclass

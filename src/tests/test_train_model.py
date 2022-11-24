@@ -531,7 +531,7 @@ class StepTraining(unittest.TestCase):
                         replicated_optimizer_state,
                     )
 
-                    replicated_model_params = train_step_output.model_params
+                    replicated_model_params = train_step_output.trainable_params
                     replicated_optimizer_state = train_step_output.optimizer_state
 
                     training_loss = train_step_output.metrics["training_loss"][0]
@@ -583,7 +583,7 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
         self.preprocessed_dataset = load_from_disk(data_args.processed_dataset_path)  # type: ignore
         self.dataloader = get_classification_dataloader(
             self.preprocessed_dataset["train"],  # type: ignore
-            per_device_batch_size=pipeline_args.train_per_device_batch_size,
+            per_device_batch_size=jax.device_count(),
             shuffle=True,
             prng_key=jax.random.PRNGKey(0),
         )
@@ -595,13 +595,15 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
             model_args.base_model_name, num_labels=num_labels
         )  # type: ignore
         model: FlaxRobertaForSequenceClassification
-        model_params = model.params
+        trainable_params = {"classifier": model.params.pop("classifier")}
+        non_trainable_params = model.params
 
         optimizer = optax.adamw(0.0001, weight_decay=model_args.weight_decay)
         # Initialize optimizer with original (non-replicated) model parameters
-        optimizer_state = optimizer.init(model_params)
+        optimizer_state = optimizer.init(trainable_params)
 
-        replicated_model_params = replicate(model_params)
+        replicated_trainable_params = replicate(trainable_params)
+        replicated_non_trainable_params = replicate(non_trainable_params)
         replicated_optimizer_state = replicate(optimizer_state)
 
         batch, _ = next(self.dataloader)
@@ -611,15 +613,16 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
             train_step_output = _train_step_cross_entropy(
                 batch,
                 model,
-                replicated_model_params,
+                replicated_trainable_params,
+                replicated_non_trainable_params,
                 optimizer,
                 replicated_optimizer_state,
             )
-            replicated_model_params = train_step_output.model_params
+            replicated_trainable_params = train_step_output.trainable_params
             replicated_optimizer_state = train_step_output.optimizer_state
 
             metrics = unreplicate(train_step_output.metrics)
-            training_losses.append(metrics["training_loss"])
+            training_losses.append(metrics["training_loss"].item())
 
         self.assertLess(training_losses[-1], training_losses[0])
 
@@ -631,15 +634,18 @@ class StepCrossEntropyLossTrainLoop(unittest.TestCase):
             model_args.base_model_name, num_labels=num_labels
         )  # type: ignore
         model: FlaxRobertaForSequenceClassification
-        model_params = model.params
+        trainable_params = {"classifier": model.params.pop("classifier")}
+        non_trainable_params = model.params
 
-        replicated_model_params = replicate(model_params)
+        replicated_trainable_params = replicate(trainable_params)
+        replicated_non_trainable_params = replicate(non_trainable_params)
         dataset: Dataset = self.preprocessed_dataset["test"]  # type: ignore
         test_stats = get_test_stats_cross_entropy(
             dataset,
             pipeline_args.eval_per_device_batch_size,
             model,
-            replicated_model_params,
+            replicated_trainable_params,
+            replicated_non_trainable_params,
             user_labels,
             metric_prefix="validation",
         )

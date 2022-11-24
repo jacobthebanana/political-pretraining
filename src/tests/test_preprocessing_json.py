@@ -1,3 +1,4 @@
+from os import path
 import unittest
 from typing import Dict, Union, Any
 import json
@@ -39,15 +40,16 @@ model_args = ModelConfig(max_seq_length=512)
 data_args = DataConfig(source_format="json", source_path=test_tweet_json_path)
 
 # Regression test: handle examples where text is None.
-with open(test_tweet_json_path, "a") as test_tweet_csv_file:
-    example_null_entry: Dict[str, Union[str, int, None]] = {
-        "tweet_id": "7",
-        "user_id": "11",
-        "text": None,
-        "created_at": 1658552020000,
-    }
-    example_null_entry_string = json.dumps(example_null_entry)
-    test_tweet_csv_file.write(example_null_entry_string + "\n")
+if path.isfile(test_tweet_json_path):
+    with open(test_tweet_json_path, "a") as test_tweet_csv_file:
+        example_null_entry: Dict[str, Union[str, int, None]] = {
+            "tweet_id": "7",
+            "user_id": "11",
+            "text": None,
+            "created_at": 1658552020000,
+        }
+        example_null_entry_string = json.dumps(example_null_entry)
+        test_tweet_csv_file.write(example_null_entry_string + "\n")
 
 
 class CreateDatasetFromRawText(unittest.TestCase):

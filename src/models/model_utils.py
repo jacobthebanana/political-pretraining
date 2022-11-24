@@ -55,7 +55,7 @@ class ShardedTrainStepOutput(NamedTuple):
     """
 
     metrics: Dict[MetricKeys, Array]
-    model_params: ModelParams
+    trainable_params: ModelParams
     optimizer_state: optax.OptState
 
 

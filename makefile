@@ -351,7 +351,9 @@ preprocess_test_dataset:
 		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" 
 
 preprocess_test_json_dataset:
-	cp data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv data/interim/${processed_dataset_suffix}_test_filtered_user_labels.csv
+	cp data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv data/interim/train_filtered_user_labels.csv
+	cp data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv data/interim/validation_filtered_user_labels.csv
+	cp data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv data/interim/test_filtered_user_labels.csv
 	python3 -m src.data.make_dataset \
 		--base_model_name=${unittest_base_model_name} \
 		--source_path="data/testing/raw/tweets.json" \
@@ -359,7 +361,8 @@ preprocess_test_json_dataset:
 		--per_user_concatenation=1 \
 		--enable_indexing=1 \
 		--processed_dataset_path="data/testing/processed/tweets" \
-		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" 
+		--processed_lookup_by_uid_json_path="data/testing/processed/tweets/lookup_by_uid.json" \
+		--train_filtered_label_path="data/interim/${processed_dataset_suffix}_train_filtered_user_labels.csv"
 
 test_show_dataset_stats: preprocess_test_dataset
 	python3 -m src.data.print_dataset_stats \
