@@ -594,9 +594,14 @@ def main():
         non_trainable_params = {}
         model = linear_regression_model.get_duck_typed_model()  # type: ignore
     else:
-        model = FlaxRobertaForSequenceClassification.from_pretrained(
-            model_args.base_model_name, num_labels=num_label_classes, from_pt=True
-        )  # type: ignore
+        try:
+            model = FlaxRobertaForSequenceClassification.from_pretrained(
+                model_args.base_model_name, num_labels=num_label_classes, from_pt=True
+            )  # type: ignore
+        except EnvironmentError:
+            model = FlaxRobertaForSequenceClassification.from_pretrained(
+                model_args.base_model_name, num_labels=num_label_classes, from_pt=True
+            )  # type: ignore
         model: FlaxRobertaForSequenceClassification
         if model_args.linear_probing_baseline_enabled:
             trainable_params = {"classifier": model.params.pop("classifier")}
