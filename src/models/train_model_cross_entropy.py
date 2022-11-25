@@ -575,6 +575,12 @@ def main():
 
     num_label_classes = get_num_classes(data_args)
 
+    wandb.init(
+        entity=pipeline_args.wandb_entity,
+        project=pipeline_args.wandb_project,
+        name=datetime.datetime.now().isoformat() + "-" + gethostname(),
+    )
+
     if data_args.bag_of_words_baseline_enabled:
         keyword_list = load_keyword_list(data_args)
         num_keywords = len(keyword_list)
@@ -619,11 +625,6 @@ def main():
 
     eval_labels = load_labels(data_args.validation_filtered_label_path)
 
-    wandb.init(
-        entity=pipeline_args.wandb_entity,
-        project=pipeline_args.wandb_project,
-        name=datetime.datetime.now().isoformat() + "-" + gethostname(),
-    )
     wandb.config.update(
         {
             "model_args": model_args.__dict__,
