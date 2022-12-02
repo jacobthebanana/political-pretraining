@@ -133,6 +133,7 @@ def _get_uid_tally_dict(
         for embedding, uid in tqdm(
             zip(embeddings, uids), total=len(uids), leave=False, ncols=NUM_COLUMNS
         ):
+            embedding: Array
             tweet_user = uid_lookup_dict.get(uid)  # type: ignore
             if not tweet_user:
                 tweet_user = TweetUser(embedding_sum=jnp.zeros_like(embedding))
@@ -141,6 +142,7 @@ def _get_uid_tally_dict(
 
             # JAX does not allow in-place update.
             tweet_user.embedding_sum = tweet_user.embedding_sum + embedding
+            tweet_user.all_embeddings.append(embedding.tolist())
             tweet_user.num_tweets_processed += 1
 
             uid_lookup_dict[uid] = tweet_user
@@ -190,6 +192,13 @@ def main():
 
     with open(data_args.output_embeddings_json_path, "w") as output_json_file:
         json.dump(uid_lookup_output, output_json_file, indent=2)
+
+    uid_to_all_embeddings_lookup = {
+        uid: user.all_embeddings for uid, user in uid_lookup_dict.items()
+    }
+
+    with open(data_args.output_all_embeddings_json_path, "w") as output_json_file:
+        json.dump(uid_to_all_embeddings_lookup, output_json_file, indent=2)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from typing import Dict, Union, Tuple, Iterable, NamedTuple, Callable, overload
+from typing import Dict, Union, Tuple, Iterable, NamedTuple, Callable, overload, List
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -87,6 +87,9 @@ class TweetUser:
 
     # Embedding sum is not initialized here since embedding_dim isn't specified.
     embedding_sum: Array
+
+    # Store on CPU memory only
+    all_embeddings: List[List[float]] = field(default_factory=list)
     num_tweets_processed: int = field(default=0)
 
 

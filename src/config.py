@@ -102,6 +102,9 @@ class DataConfig:
     )
     model_output_path: str = field(default="data/artifacts/saved_model")
     output_embeddings_json_path: str = field(default="data/artifacts/embeddings.json")
+    output_all_embeddings_json_path: str = field(
+        default="data/artifacts/all_embeddings.json"
+    )
     num_procs: int = field(default=multiprocessing.cpu_count())
     # Keep only the last 1/shard_denominator of data.
     shard_denominator: int = field(default=1)
