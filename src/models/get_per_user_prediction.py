@@ -29,6 +29,7 @@ def get_user_predictions(
         test_batch_size,
         model,
         replicated_model_params,
+        {},
         None,
         metric_prefix="",
     )
