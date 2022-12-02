@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--label_csv_paths", nargs="+")
     parser.add_argument("--fold_json_path")
     parser.add_argument("--prediction_json_path")
+    parser.add_argument("--variation")
+    parser.add_argument("--eval_on_all_users")
     parser.add_argument("--fold_key", type=str)
     parser.add_argument("--wandb_entity", type=str)
     parser.add_argument("--wandb_project", type=str)
@@ -29,6 +31,7 @@ def main():
     fold_json_path: str = args.fold_json_path
     prediction_json_path: str = args.prediction_json_path
     fold_key: str = args.fold_key
+    eval_on_all_users = args.eval_on_all_users
 
     wandb.init(
         entity=args.wandb_entity,
@@ -53,7 +56,10 @@ def main():
         predictions: Dict[str, int] = json.load(prediction_json_file)
 
     # Evaluate prediction on the given fold
-    uids_in_fold: List[str] = folds[fold_key]
+    if eval_on_all_users:
+        uids_in_fold: List[str] = list(user_labels.keys())
+    else:
+        uids_in_fold: List[str] = folds[fold_key]
     num_labelled_users = 0
     num_labelled_users_correct = 0
 
